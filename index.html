@@ -291,6 +291,8 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .times-row .field{flex:1;margin:12px 0 6px}
 .days{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 12px}
 .days .check{margin:0}
+.qr{background:#fff;border-radius:var(--radius-sm);padding:4px;max-width:520px;margin:0 auto}
+.qr svg{display:block;width:100%;height:auto}
 .sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
 .hidden{display:none !important}
 @media (prefers-reduced-motion: reduce){*{transition:none !important}}
@@ -1952,11 +1954,195 @@ function importText(txt){
   renderPlan();
 }
 function syncCardEl(){
-  const btn = (text, onclick) => el('button', { class:'btn', type:'button', text, onclick });
+  const btn = (text, onclick, cls = '') => el('button', { class:`btn ${cls}`, type:'button', text, onclick });
   return el('div', { class:'card' }, el('h4', { text:'Plans on your other devices' }),
-    el('p', { class:'hint', style:'margin:0 0 10px', text:"Plans are saved only in this browser. Copy them here and paste them on another device, or use a file. When both have the same day, the one changed most recently wins." }),
+    el('p', { class:'hint', style:'margin:0 0 10px', text:"Plans are saved only in this browser. Show a QR code and scan it with your phone's camera, or copy, share or save them. When both devices have the same day, the one changed most recently wins." }),
     el('div', { class:'btns' },
+      btn('Show QR code', showPlanQr, 'primary'), navigator.share ? btn('Share link', sharePlanLink) : null,
       btn('Copy plans', copyPlans), btn('Paste plans', pasteDialog), btn('Save file', savePlanFile), btn('Open file', openPlanFile)));
+}
+
+// ----- plan link: plans travel inside the URL fragment (after #), which browsers never send to any server -----
+const LINK_MAX = 2300;   // keeps the QR code scannable from a screen
+const b64url = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const fromB64url = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function deflate(str){ return new Uint8Array(await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer()); }
+async function inflate(bytes){
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const parts = []; let n = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; n += value.length; if (n > 2e6) throw new Error('too large'); parts.push(value); }
+  return new TextDecoder().decode(await new Blob(parts).arrayBuffer());
+}
+// Today onward plus templates; later days are dropped until the link fits.
+async function planLink(){
+  const today = ymd(new Date()), all = Object.keys(plans).filter(d => d >= today).sort();
+  const strip = bl => bl.map(({ id, ...r }) => r);
+  for (let days = all.slice(); ; days.pop()) {
+    const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
+    const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
+    const json = JSON.stringify({ app:'quick-timer-plan', v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl });
+    const url = `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
+    if (url.length <= LINK_MAX || !days.length) return { url, days: days.length, left: all.length - days.length, fits: url.length <= LINK_MAX };
+  }
+}
+async function showPlanQr(){
+  let link;
+  try { link = await planLink(); } catch { toast("This browser can't make a plan link. Use Copy plans instead.", true); return; }
+  if (!link.fits) { toast('Your templates are too large for a QR code. Use Copy plans or a file instead.', true); return; }
+  const n = link.days, msg = `Scan with your phone's camera. It opens Quick Timer and asks before importing ${n} day${n === 1 ? '' : 's'} (today onward)${Object.keys(planTpl).length ? ' plus your templates' : ''}.`
+    + (link.left ? ` ${link.left} later day${link.left === 1 ? '' : 's'} didn't fit; use Copy plans for those.` : '');
+  openDialog('Scan to copy plans', el('div', { class:'qr' }, qrSvg(link.url)), el('p', { class:'hint', style:'margin:12px 0' , text: msg }),
+    el('div', { class:'btns' }, el('button', { class:'btn', type:'button', text:'Done', onclick: e => e.target.closest('dialog').close() })));
+}
+async function sharePlanLink(){
+  let link;
+  try { link = await planLink(); } catch { toast("This browser can't make a plan link. Use Save file instead.", true); return; }
+  try { await navigator.share({ title:'Quick Timer plans', url: link.url }); }
+  catch (err) { if (err.name !== 'AbortError') toast("Couldn't open sharing. Use Save file instead.", true); }
+}
+async function importFromHash(){
+  const m = location.hash.match(/^#plans=([A-Za-z0-9_-]{1,8000})$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);   // don't re-import on reload
+  let txt, o;
+  try { txt = await inflate(fromB64url(m[1])); o = JSON.parse(txt); } catch { toast("Couldn't read the plans in that link.", true); return; }
+  const n = Object.keys(o?.plans || {}).length;
+  if (!confirm(`Import plans for ${n} day${n === 1 ? '' : 's'}${o?.templates && Object.keys(o.templates).length ? ' and your templates' : ''} from the scanned link? Days you changed more recently on this device are kept.`)) return;
+  try { importText(txt); setView('plan'); } catch (err) { toast(err.message, true); }
+}
+window.addEventListener('hashchange', importFromHash);
+
+// ---------- QR code (byte mode, versions 1-40; drawn as SVG, no libraries) ----------
+const QR_ECC = [   // codewords per block, then number of blocks; index by [level L,M,Q,H][version]
+  [-1,7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+  [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28],
+  [-1,13,22,18,26,18,24,18,22,20,24,28,26,24,20,30,24,28,28,26,30,28,30,30,30,30,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+  [-1,17,28,22,16,22,28,26,26,24,28,24,28,22,24,24,30,28,28,26,28,30,24,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30]];
+const QR_BLOCKS = [
+  [-1,1,1,1,1,1,2,2,2,2,4,4,4,4,4,6,6,6,6,7,8,8,9,9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25],
+  [-1,1,1,1,2,2,4,4,4,5,5,5,8,9,9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49],
+  [-1,1,1,2,2,4,4,6,6,8,8,8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68],
+  [-1,1,1,2,4,4,4,5,6,8,8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81]];
+const QR_FMT = [1, 0, 3, 2];   // format bits for L, M, Q, H
+function qrRawModules(v){
+  let r = (16 * v + 128) * v + 64;
+  if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; }
+  return r;
+}
+const qrDataCodewords = (v, e) => Math.floor(qrRawModules(v) / 8) - QR_ECC[e][v] * QR_BLOCKS[e][v];
+function gfMul(x, y){ let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z & 0xFF; }
+function rsDivisor(deg){
+  const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1;
+  for (let i = 0; i < deg; i++) { for (let j = 0; j < deg; j++) { r[j] = gfMul(r[j], root); if (j + 1 < deg) r[j] ^= r[j + 1]; } root = gfMul(root, 2); }
+  return r;
+}
+function rsRemainder(data, div){
+  const r = new Array(div.length).fill(0);
+  for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= gfMul(c, f); }); }
+  return r;
+}
+function qrEncode(bytes){
+  let v = 1, e = 0;
+  const need = ver => 4 + (ver <= 9 ? 8 : 16) + bytes.length * 8;
+  while (need(v) > qrDataCodewords(v, 0) * 8) if (++v > 40) throw new Error('Too much data for a QR code');
+  for (let x = 1; x < 4; x++) if (need(v) <= qrDataCodewords(v, x) * 8) e = x;   // stronger error correction when it fits
+  // data bits
+  const bits = [], put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(4, 4); put(bytes.length, v <= 9 ? 8 : 16); for (const b of bytes) put(b, 8);
+  const cap = qrDataCodewords(v, e) * 8;
+  put(0, Math.min(4, cap - bits.length)); put(0, (8 - bits.length % 8) % 8);
+  for (let pad = 0xEC; bits.length < cap; pad ^= 0xEC ^ 0x11) put(pad, 8);
+  const data = []; for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => a << 1 | b, 0));
+  // error correction + interleave
+  const nb = QR_BLOCKS[e][v], el2 = QR_ECC[e][v], raw = Math.floor(qrRawModules(v) / 8);
+  const nShort = nb - raw % nb, shortLen = Math.floor(raw / nb), div = rsDivisor(el2), blocks = [];
+  for (let i = 0, k = 0; i < nb; i++) {
+    const dat = data.slice(k, k + shortLen - el2 + (i < nShort ? 0 : 1)); k += dat.length;
+    const ecc = rsRemainder(dat, div); if (i < nShort) dat.push(0); blocks.push(dat.concat(ecc));
+  }
+  const cw = [];
+  for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - el2 || j >= nShort) cw.push(b[i]); });
+  // function patterns
+  const size = v * 4 + 17, mod = [...Array(size)].map(() => Array(size).fill(false)), fn = [...Array(size)].map(() => Array(size).fill(false));
+  const set = (x, y, d) => { mod[y][x] = d; fn[y][x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]])
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx + dx, y = cy + dy;
+      if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+    }
+  if (v > 1) {
+    const n = Math.floor(v / 7) + 2, step = Math.floor((v * 8 + n * 3 + 5) / (n * 4 - 4)) * 2, pos = [6];
+    for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+    pos.forEach((y, i) => pos.forEach((x, j) => {
+      if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) return;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(x + dx, y + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }));
+  }
+  const drawFormat = mask => {
+    const d = QR_FMT[e] << 3 | mask; let r = d;
+    for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+    const b = ((d << 10) | r) ^ 0x5412, bit = i => ((b >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+    set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+    for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+    set(8, size - 8, true);
+  };
+  drawFormat(0);
+  if (v >= 7) {
+    let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25);
+    const b = v << 12 | r;
+    for (let i = 0; i < 18; i++) { const d = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, d); set(c, a, d); }
+  }
+  // codewords in zigzag
+  let i = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+      const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+      if (!fn[y][x] && i < cw.length * 8) { mod[y][x] = ((cw[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; }
+    }
+  }
+  // pick the mask with the lowest penalty
+  const MASKS = [(x, y) => (x + y) % 2, (x, y) => y % 2, (x, y) => x % 3, (x, y) => (x + y) % 3, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2,
+    (x, y) => x * y % 2 + x * y % 3, (x, y) => (x * y % 2 + x * y % 3) % 2, (x, y) => ((x + y) % 2 + x * y % 3) % 2];
+  const applyMask = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && MASKS[m](x, y) === 0) mod[y][x] = !mod[y][x]; };
+  let best = 0, bestP = Infinity;
+  for (let m = 0; m < 8; m++) {
+    applyMask(m); drawFormat(m);
+    const p = qrPenalty(mod); if (p < bestP) { bestP = p; best = m; }
+    applyMask(m);
+  }
+  applyMask(best); drawFormat(best);
+  return mod;
+}
+function qrPenalty(m){
+  const n = m.length; let p = 0, dark = 0;
+  for (let pass = 0; pass < 2; pass++) for (let a = 0; a < n; a++) {
+    let run = 1, line = '';
+    for (let b = 0; b < n; b++) {
+      const c = pass ? m[b][a] : m[a][b]; line += c ? '1' : '0';
+      if (b && c === (pass ? m[b - 1][a] : m[a][b - 1])) run++; else { if (run >= 5) p += run - 2; run = 1; }
+    }
+    if (run >= 5) p += run - 2;
+    line = `0000${line}0000`;
+    for (const pat of ['10111010000', '00001011101']) for (let k = line.indexOf(pat); k >= 0; k = line.indexOf(pat, k + 1)) p += 40;
+  }
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    if (m[y][x]) dark++;
+    if (x < n - 1 && y < n - 1 && m[y][x] === m[y][x + 1] && m[y][x] === m[y + 1][x] && m[y][x] === m[y + 1][x + 1]) p += 3;
+  }
+  return p + (Math.ceil(Math.abs(dark * 20 - n * n * 10) / (n * n)) - 1) * 10;
+}
+function qrSvg(text){
+  const m = qrEncode(new TextEncoder().encode(text)), n = m.length, q = 4;
+  let d = '';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (m[y][x]) d += `M${x + q},${y + q}h1v1h-1z`;
+  return svg('svg', { viewBox:`0 0 ${n + 2 * q} ${n + 2 * q}`, role:'img', 'aria-label':'QR code with your plans', 'shape-rendering':'crispEdges' },
+    svg('rect', { width: n + 2 * q, height: n + 2 * q, fill:'#fff' }), svg('path', { d, fill:'#000' }));
 }
 function copyPlans(){
   const txt = exportText();
@@ -1990,6 +2176,7 @@ setInterval(() => { updatePlanNow(); if (view === 'plan' && !plan.drag && !docum
 
 // ---------- boot ----------
 indexCache(); renderAll();
+importFromHash();
 if (!apiKey) showSettings(true);
 else if (!cache) connect();
 else {
