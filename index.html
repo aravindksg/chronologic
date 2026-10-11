@@ -206,6 +206,11 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:none;padding:8px 4px 10px;cursor:pointer;color:var(--muted);font-size:12px}
 .nav-btn:hover{color:var(--ink)}
 .nav-btn[aria-current="page"]{color:var(--go);font-weight:600}
+.task-focus{text-align:center;padding:10px 0 4px}
+.task-name{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:17px;max-width:100%}
+.task-name span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-total{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:40px;font-weight:600;line-height:1.1;margin-top:10px}
+.task-delta{margin-top:8px}
 .hidden{display:none !important}
 @media (prefers-reduced-motion: reduce){*{transition:none !important}}
 </style>
@@ -881,7 +886,7 @@ const PALETTE = ['#2F7FD8','#E4572E','#2E9E5B','#E0A21B','#8E5BD8','#17A2A2','#D
 const OTHER = '__other';
 const WD = { SUNDAY:0, MONDAY:1, TUESDAY:2, WEDNESDAY:3, THURSDAY:4, FRIDAY:5, SATURDAY:6 };
 let view = 'timer';
-const sum = { kind: store.get(K.sumKind, 'week'), offset:0, customA:'', customB:'', path:[], selDay:null, selSeg:null, token:0 };
+const sum = { kind: store.get(K.sumKind, 'week'), offset:0, customA:'', customB:'', path:[], names:[], taskCol:null, selDay:null, selSeg:null, token:0 };
 const sumCache = new Map();
 
 const startOfDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
@@ -1056,16 +1061,21 @@ function headerEl(p){
 function renderSummary(p, segs){
   const box = $('summary');
   const root = buildTree(segs, p);
-  // follow drill path; trim if a level no longer exists in this range
+  // follow drill path; trim if a level no longer exists in this range.
+  // A focused task stays put even with no time here, so it reads "0m" instead of jumping back.
+  const keepTask = sum.path.length === 3;
   let node = root; const trail = [root];
   for (let i = 0; i < sum.path.length; i++) {
-    const c = node.children.get(sum.path[i]);
-    if (!c) { sum.path = sum.path.slice(0, i); break; }
+    let c = node.children.get(sum.path[i]);
+    if (!c && keepTask) c = { key:sum.path[i], name:sum.names[i] || '', level:i + 1, ms:0, prev:0, children:new Map(),
+      color: i === 1 ? (projectsById.get(sum.path[1])?.color || null) : null };
+    if (!c) { sum.path = sum.path.slice(0, i); sum.names = sum.names.slice(0, i); break; }
     node = c; trail.push(c);
   }
+  if (node.level === 3) return renderTaskSummary(p, segs, trail);
   const items = [...node.children.values()].filter(c => c.ms > 0 || c.prev > 0).sort((x, y) => y.ms - x.ms || y.prev - x.prev);
   items.forEach((it, i) => it.col = colorFor(it, i));
-  const canDrill = node.level < 2;
+  const canDrill = node.level < 3;
 
   const out = [headerEl(p)];
   if (!root.ms && !root.prev) {
@@ -1075,13 +1085,7 @@ function renderSummary(p, segs){
 
   // ---- card 1: donut + ranked bars
   const card = el('div', { class:'card' });
-  const crumbs = el('div', { class:'crumbs' });
-  trail.forEach((n, i) => {
-    if (i) crumbs.append(el('span', { class:'sum-sub', text:'›' }));
-    if (i === trail.length - 1) crumbs.append(el('span', { class:'here', text: i ? n.name : 'All categories' }));
-    else crumbs.append(el('button', { class:'link', type:'button', text: i ? n.name : 'All categories', onclick: () => { sum.path = sum.path.slice(0, i); sum.selDay = sum.selSeg = null; renderSummary(p, segs); } }));
-  });
-  card.append(crumbs);
+  card.append(crumbsEl(trail, p, segs));
 
   // donut: top 7 + other
   const cur = items.filter(i => i.ms > 0);
@@ -1098,7 +1102,7 @@ function renderSummary(p, segs){
     const drill = canDrill && sl.key !== OTHER;
     const c = svg('circle', { class: drill ? 'slice' : null, cx:size/2, cy:size/2, r, fill:'none', 'stroke-width':sw,
       'stroke-dasharray': `${Math.max(0, len - gap)} ${C}`, 'stroke-dashoffset': -acc, transform:`rotate(-90 ${size/2} ${size/2})`,
-      style:`stroke:${sl.col}`, onclick: drill ? () => drillTo(sl.key, p, segs) : null },
+      style:`stroke:${sl.col}`, onclick: drill ? () => drillTo(sl, p, segs) : null },
       svg('title', { text:`${sl.name}: ${dur(sl.ms)} (${Math.round(sl.ms / total * 100)}%)` }));
     donut.append(c); acc += len;
   }
@@ -1117,7 +1121,7 @@ function renderSummary(p, segs){
     const drill = canDrill && it.ms > 0;
     const fill = el('div', { class:'fill' }); fill.style.width = `${it.ms / max * 100}%`; fill.style.background = it.col;
     const dot = el('span', { class:'dot' }); dot.style.background = it.col;
-    const row = el(drill ? 'button' : 'div', { class:'bar', type: drill ? 'button' : null, onclick: drill ? () => drillTo(it.key, p, segs) : null,
+    const row = el(drill ? 'button' : 'div', { class:'bar', type: drill ? 'button' : null, onclick: drill ? () => drillTo(it, p, segs) : null,
         'aria-label': drill ? `${it.name}, ${dur(it.ms)}. Show breakdown` : null },
       el('div', { class:'bar-top' }, dot, el('span', { class:'bar-name', text: it.name }), el('span', { class:'bar-time', text: dur(it.ms) }),
         el('span', { class:'bar-more', text: drill ? '›' : '' })),
@@ -1134,6 +1138,9 @@ function renderSummary(p, segs){
   const nameOf = new Map(items.map(i => [i.key, i.name]));
   const keyFor = g => { const k = g.keys[sum.path.length]; return colorOf.has(k) ? k : OTHER; };
   const mine = segs.filter(g => segMatches(g, sum.path));
+  renderChartCard(box, out, p, mine, keyFor, colorOf, nameOf, slices);
+}
+function renderChartCard(box, out, p, mine, keyFor, colorOf, nameOf, slices){
   const chartCard = el('div', { class:'card' });
   out.push(chartCard);
   box.replaceChildren(...out);
@@ -1142,7 +1149,42 @@ function renderSummary(p, segs){
   else if (p.days <= 62) renderColumns(chartCard, width, p, mine, keyFor, colorOf, nameOf, slices);
   else chartCard.append(el('div', { class:'sum-sub', text:'The daily chart shows ranges of up to 62 days. Pick a shorter range to see it.' }));
 }
-function drillTo(key, p, segs){ if (sum.path.length < 2) { sum.path = [...sum.path, key]; sum.selDay = sum.selSeg = null; renderSummary(p, segs); window.scrollTo({ top:0 }); } }
+function crumbsEl(trail, p, segs){
+  const crumbs = el('div', { class:'crumbs' });
+  trail.forEach((n, i) => {
+    if (i) crumbs.append(el('span', { class:'sum-sub', text:'›' }));
+    if (i === trail.length - 1) crumbs.append(el('span', { class:'here', text: i ? n.name : 'All categories' }));
+    else crumbs.append(el('button', { class:'link', type:'button', text: i ? n.name : 'All categories', onclick: () => {
+      sum.path = sum.path.slice(0, i); sum.names = sum.names.slice(0, i); sum.selDay = sum.selSeg = null; renderSummary(p, segs); } }));
+  });
+  return crumbs;
+}
+function drillTo(it, p, segs){
+  if (sum.path.length >= 3) return;
+  sum.names = [...sum.names.slice(0, sum.path.length), it.name];
+  sum.path = [...sum.path, it.key];
+  if (sum.path.length === 3) sum.taskCol = it.col;   // keep the task's color across ranges
+  sum.selDay = sum.selSeg = null; renderSummary(p, segs); window.scrollTo({ top:0 });
+}
+// Focused view for one task: total, change vs previous period, share of its project, then its daily chart.
+function renderTaskSummary(p, segs, trail){
+  const box = $('summary'), node = trail[3], proj = trail[2];
+  const col = sum.taskCol || proj.color || PALETTE[0];
+  const card = el('div', { class:'card' }, crumbsEl(trail, p, segs));
+  const dot = el('span', { class:'dot' }); dot.style.background = col;
+  const d = node.ms - node.prev;
+  const deltaTxt = !node.prev && node.ms ? `New ${p.cmpLabel}`
+    : Math.abs(d) < 60000 ? `±0m ${p.cmpLabel}` : `${d > 0 ? '▲' : '▼'} ${dur(Math.abs(d))} ${p.cmpLabel}`;
+  card.append(el('div', { class:'task-focus' },
+    el('div', { class:'task-name' }, dot, el('span', { text: node.name })),
+    el('div', { class:'task-total', text: dur(node.ms) }),
+    el('div', { class:'sum-sub', text: p.inProgress ? 'so far' : 'tracked' }),
+    el('div', { class:'sum-sub task-delta', text: deltaTxt }),
+    proj.ms > 0 ? el('div', { class:'sum-sub', text: `${Math.round(node.ms / proj.ms * 100)}% of ${proj.name} (${dur(proj.ms)})` }) : null));
+  const k = node.key;
+  renderChartCard(box, [headerEl(p), card], p, segs.filter(g => segMatches(g, sum.path)), () => k,
+    new Map([[k, col]]), new Map([[k, node.name]]), [{ key:k, col }]);
+}
 
 function renderColumns(card, W, p, segs, keyFor, colorOf, nameOf, slices){
   card.append(el('h4', { text:'Hours per day' }));
