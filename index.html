@@ -211,6 +211,87 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 .task-name span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .task-total{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:40px;font-weight:600;line-height:1.1;margin-top:10px}
 .task-delta{margin-top:8px}
+/* Plan view: planned blocks next to tracked time */
+.plan-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.plan-actions .btn{padding:7px 12px;font-size:14px}
+.plan-hint{text-align:center;margin:12px 4px 0}
+.scores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.score{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:10px 12px;min-width:0}
+.score-label{font-size:12px;color:var(--muted);font-weight:600}
+.score-val{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:24px;font-weight:600;line-height:1.2}
+.score-sub{font-size:12px;color:var(--muted)}
+.plan-counts{text-align:center;color:var(--muted);font-size:13px;margin-top:8px}
+.cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);margin-top:12px;overflow:hidden}
+.cal-grid{display:grid;grid-template-columns:46px minmax(0,1fr) minmax(0,.6fr);column-gap:6px;padding-right:8px}
+.cal-head{font-size:12px;font-weight:600;color:var(--muted);padding:10px 2px 8px}
+.cal-scroll{max-height:min(66vh,1560px);overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line)}
+.cal-scroll .cal-grid{padding-top:10px;padding-bottom:10px}
+.cal-times{position:relative}
+.cal-times span{position:absolute;right:0;transform:translateY(-50%);font-size:11px;color:var(--muted);white-space:nowrap}
+.lane{position:relative;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--line) 45%,transparent) 1px,transparent 1px);background-size:100% 64px,100% 32px}
+.plan-lane{cursor:cell}
+.pb{--pc:var(--muted);position:absolute;left:2px;right:2px;display:flex;flex-direction:column;gap:1px;padding:3px 6px 3px 9px;overflow:hidden;text-align:left;font-size:12px;line-height:1.25;color:var(--ink);
+  border:1px solid color-mix(in srgb,var(--pc) 45%,var(--line));border-radius:6px;background:color-mix(in srgb,var(--pc) 16%,var(--surface));box-shadow:inset 3px 0 0 var(--pc);cursor:pointer}
+.pb:hover{border-color:var(--pc)}
+.pb-top{display:flex;gap:6px;align-items:center;min-width:0}
+.pb-name{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pb-meta{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.pb.short{justify-content:center;padding-top:0;padding-bottom:0}
+.pb.short .pb-meta{display:none}
+.pb-mark{flex:none;font-weight:700}
+.st-done .pb-mark{color:var(--go)}
+.st-miss .pb-mark{color:var(--danger)}
+.st-part .pb-mark,.st-now .pb-mark{color:var(--run)}
+.pb.st-miss{background:color-mix(in srgb,var(--pc) 6%,var(--surface));border-style:dashed}
+.pb-grip{position:absolute;left:0;right:0;bottom:0;height:7px;cursor:ns-resize}
+.pb.ghost{border:1.5px dashed var(--go);background:color-mix(in srgb,var(--go) 10%,transparent);box-shadow:none;color:var(--go);font-weight:600;pointer-events:none}
+.pb.dragging{z-index:2;box-shadow:inset 3px 0 0 var(--pc),0 4px 12px rgb(0 0 0 / .18)}
+.ab{--pc:var(--muted);position:absolute;left:0;right:0;border-radius:4px;background:var(--pc);overflow:hidden;cursor:pointer}
+.ab.close{background:repeating-linear-gradient(135deg,var(--pc) 0 5px,color-mix(in srgb,var(--pc) 40%,var(--surface)) 5px 10px)}
+.ab.off{background:color-mix(in srgb,var(--pc) 30%,var(--surface));outline:1px dashed color-mix(in srgb,var(--pc) 70%,var(--line));outline-offset:-1px}
+.ab-name{display:block;padding:2px 5px;font-size:11px;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgb(0 0 0 / .4)}
+.ab.off .ab-name,.ab.close .ab-name{color:var(--ink);text-shadow:none}
+.now-line{position:absolute;left:-3px;right:0;height:2px;background:var(--run);z-index:3;pointer-events:none}
+.cal-key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line)}
+.cal-key i{--pc:var(--muted);display:inline-block;width:14px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:5px;position:static}
+.pt-head,.pt-row{display:grid;grid-template-columns:minmax(0,1fr) 54px 62px 62px;gap:8px;align-items:center}
+.pt-head{font-size:12px;color:var(--muted);font-weight:600;padding:0 4px 6px}
+.pt-head span:not(:first-child),.pt-num{text-align:right}
+.pt-row{width:100%;border:0;border-top:1px solid var(--line);background:none;padding:10px 4px;text-align:left;color:inherit;font-variant-numeric:tabular-nums}
+button.pt-row{cursor:pointer}
+button.pt-row:hover{background:color-mix(in srgb,var(--go) 7%,transparent)}
+.pt-name{display:flex;align-items:center;gap:8px;min-width:0}
+.pt-name .label{min-width:0}
+.pt-name .title,.pt-name .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-name .meta{font-size:12px;color:var(--muted)}
+.pt-num{font-size:14px}
+.pt-diff.over{color:var(--go)}
+.pt-diff.under{color:var(--danger)}
+.plan-now{--pc:var(--go);display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 12px 12px 16px;border:1px solid color-mix(in srgb,var(--pc) 35%,var(--line));border-radius:var(--radius-lg);
+  background:color-mix(in srgb,var(--pc) 12%,var(--surface));box-shadow:inset 4px 0 0 var(--pc)}
+.plan-now-info{flex:1;min-width:0}
+.plan-now-label{font-size:12px;color:var(--muted);font-weight:600}
+.plan-now-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-now-sub{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plan-now-state{color:var(--go);font-weight:600;font-size:14px;white-space:nowrap}
+.today-plan{margin-top:8px;font-size:13px;color:var(--muted)}
+dialog.sheet{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);color:var(--ink);padding:0;width:min(560px,calc(100% - 24px));max-height:calc(100dvh - 48px)}
+dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
+.sheet-in{padding:18px}
+.sheet h3{margin:0 0 10px;font-size:18px}
+.sheet .search{width:100%}
+.pick{max-height:min(280px,38vh);overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm);margin-top:8px}
+.pick .row{min-height:44px;padding:9px 12px}
+.pick .row + .row{border-top:1px solid var(--line)}
+.pick .row[aria-selected="true"]{box-shadow:inset 3px 0 0 var(--go)}
+.pick-chosen{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px;min-height:22px;min-width:0}
+.pick-chosen b,.pick-chosen .muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.muted{color:var(--muted)}
+.times-row{display:flex;gap:10px}
+.times-row .field{flex:1;margin:12px 0 6px}
+.days{display:flex;flex-wrap:wrap;gap:6px 14px;margin:6px 0 12px}
+.days .check{margin:0}
+.sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
 .hidden{display:none !important}
 @media (prefers-reduced-motion: reduce){*{transition:none !important}}
 </style>
@@ -297,11 +378,13 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 
   <div id="list"></div>
   <div id="summary" class="hidden"></div>
+  <div id="plan" class="hidden"></div>
 </div>
 <nav class="tabbar" aria-label="Main">
   <div class="tabbar-in">
     <button class="nav-btn" type="button" id="navTimer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg><span>Timer</span></button>
     <button class="nav-btn" type="button" id="navSearch"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Search</span></button>
+    <button class="nav-btn" type="button" id="navPlan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h4"/></svg><span>Plan</span></button>
     <button class="nav-btn" type="button" id="navSummary"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Summary</span></button>
     <button class="nav-btn" type="button" id="navSettings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
   </div>
@@ -312,7 +395,8 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 (() => {
 'use strict';
 const BASE = 'https://api.clockify.me/api/v1';
-const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff' };
+const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
+  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -527,6 +611,7 @@ function recordStopped(entry, fallback, endIso){
   else if (fallback) seg = { ...runningSeg(fallback), e: Date.parse(endIso), live:false };
   if (!seg || !(seg.e > seg.s)) return;
   for (const v of sumCache.values()) if (seg.e > v.from && !v.segs.some(g => g.id && g.id === seg.id)) v.segs.push(seg);
+  snapshotActuals();
 }
 function handleError(err){
   toast(err.message || 'Something went wrong', true);
@@ -720,11 +805,12 @@ function renderList(){
     list.append(box); return;
   }
   resultItems = [];
+  const pn = planNowEl(); if (pn) list.append(pn);
   quickSection(list);
   list.append(todayCardEl());
   renderGroups(list);
 }
-function renderAll(){ renderRunning(); renderList(); }
+function renderAll(){ renderRunning(); renderList(); if (view === 'plan' && !plan.drag) renderPlan(); }
 
 // ---------- settings ----------
 function showSettings(open){
@@ -859,10 +945,10 @@ $('wsSelect').addEventListener('change', async e => {
   try { sumCache.clear(); await refreshData(true); await sync('user'); showSettings(false); } catch (err) { handleError(err); }
 });
 $('forgetBtn').addEventListener('click', () => {
-  if (!confirm('Remove the API key and cached projects from this browser?')) return;
+  if (!confirm('Remove the API key, cached projects and your plans from this browser? Copy or save your plans first (Plan tab) to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -969,8 +1055,9 @@ async function fetchSegs(p){
   }
   // A range that reaches "now" also tells us the current timer, so no separate check is needed.
   if (+p.b > nowMs) { running = live ? toRunning(live) : null; lastSync = nowMs; }
-  const v = { from: +from, segs, live };
+  const v = { from: +from, to: +p.b, at: nowMs, segs, live };
   sumCache.set(key, v);
+  snapshotActuals();
   return v;
 }
 
@@ -1272,25 +1359,28 @@ function showSeg(detail, q){
 }
 
 function setView(v){
-  view = v;
-  const sumV = v === 'summary';
-  $('timerBar').classList.toggle('hidden', sumV); $('summaryBar').classList.toggle('hidden', !sumV);
-  $('list').classList.toggle('hidden', sumV); $('summary').classList.toggle('hidden', !sumV);
+  const was = view; view = v;
+  const sumV = v === 'summary', planV = v === 'plan', timerV = v === 'timer';
+  $('timerBar').classList.toggle('hidden', !timerV); $('summaryBar').classList.toggle('hidden', !sumV);
+  $('list').classList.toggle('hidden', !timerV); $('summary').classList.toggle('hidden', !sumV); $('plan').classList.toggle('hidden', !planV);
   $('create').classList.add('hidden'); $('settings').classList.add('hidden');
-  if (sumV) { loadSummary(); window.scrollTo({ top:0 }); } else renderList();
+  if (sumV) { loadSummary(); window.scrollTo({ top:0 }); }
+  else if (planV) { if (was !== 'plan') plan.date = ymd(new Date()); plan.jump = true; renderPlan(); window.scrollTo({ top:0 }); }
+  else renderList();
   updateNav();
 }
 function updateNav(){
   const settingsOpen = !$('settings').classList.contains('hidden');
-  const cur = view === 'summary' ? 'navSummary' : settingsOpen ? 'navSettings' : 'navTimer';
-  for (const id of ['navTimer','navSearch','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
+  const cur = view === 'summary' ? 'navSummary' : view === 'plan' ? 'navPlan' : settingsOpen ? 'navSettings' : 'navTimer';
+  for (const id of ['navTimer','navSearch','navPlan','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
 }
 function toTimer(){ if (view !== 'timer') setView('timer'); showSettings(false); closeCreate(); window.scrollTo({ top:0 }); }
 $('navTimer').addEventListener('click', toTimer);
 $('navSearch').addEventListener('click', () => { toTimer(); $('search').focus(); });
 $('navSummary').addEventListener('click', () => setView('summary'));
+$('navPlan').addEventListener('click', () => setView('plan'));
 $('navSettings').addEventListener('click', () => {
-  if (view === 'summary') setView('timer');
+  if (view !== 'timer') setView('timer');
   const open = $('settings').classList.contains('hidden');
   showSettings(open); if (open) window.scrollTo({ top:0 });
 });
@@ -1316,6 +1406,7 @@ function todayCardEl(){
     return btn;
   }
   const root = buildTree(withLive(v.segs), p);
+  const pl = planLineText(v, p), plLine = pl ? el('div', { class:'today-plan', text:pl }) : null;
   // Categories stay grouped; time with no category is shown per project instead of one lumped item.
   const cats = [];
   for (const c of root.children.values()) {
@@ -1330,7 +1421,7 @@ function todayCardEl(){
     el('span', { class:'today-label', text:'Today' }),
     el('span', { class:'today-delta', text: root.prev || root.ms ? `${Math.abs(d) < 60000 ? '±0m' : (d > 0 ? '▲ ' : '▼ ') + dur(Math.abs(d))} vs yesterday` : '' }),
     el('span', { class:'today-total', text: dur(root.ms) })));
-  if (!root.ms) { btn.append(el('div', { class:'today-legend', text:'Nothing tracked yet today.' })); return btn; }
+  if (!root.ms) { btn.append(el('div', { class:'today-legend', text:'Nothing tracked yet today.' }), plLine || ''); return btn; }
   const stack = el('div', { class:'stack', 'aria-hidden':'true' });
   const legend = el('div', { class:'today-legend' });
   const SHOW = 8;
@@ -1341,6 +1432,7 @@ function todayCardEl(){
   });
   if (cats.length > SHOW) legend.append(el('span', { text:`+${cats.length - SHOW} more` }));
   btn.append(stack, legend);
+  if (plLine) btn.append(plLine);
   return btn;
 }
 function updateTodayCard(){
@@ -1370,6 +1462,531 @@ function setRowTime(span){
 }
 function refreshRowTimes(){ rowTimes = todayTimes(); document.querySelectorAll('#list .rtime').forEach(setRowTime); }
 setInterval(() => { if (running) { updateTodayCard(); refreshRowTimes(); } }, 15000);   // local re-draw only, no requests
+
+// ---------- plan (local only: planning and comparing never call Clockify) ----------
+// A block targets a task {p,t}, a task group {p,g} ("Pro work" = tasks named "Pro work" or "Pro work: ..."), or a whole project {p}.
+// Tracked time matches "exact" (the target) or "close" (same project, other task).
+let plans = store.get(K.plan, {});        // {'YYYY-MM-DD': {at, b:[{id, s, e, p, t, g, n, c}]}}; s/e = minutes from midnight
+let planTpl = store.get(K.planTpl, {});   // {weekday 0-6: [blocks]}
+let actuals = store.get(K.actual, {});    // {'YYYY-MM-DD': {ws, at, s:[[start, end, projectId, taskId, taskName, projectName, color]]}}
+const plan = { date: ymd(new Date()), drag:null, suppress:false, jump:false };
+const SLOT = 15, HOUR_PX = 64, PX_MIN = HOUR_PX / 60;
+const fineMouse = () => matchMedia('(pointer: fine)').matches;
+
+const dayBlocks = d => plans[d]?.b || [];
+function savePlanDay(d, blocks){ plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans); }
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const groupOf = name => { const i = (name || '').indexOf(':'); return i > 0 ? name.slice(0, i).trim() : null; };
+const hm = min => new Date(2000, 0, 1, Math.floor(min / 60), min % 60).toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+const dayOffset = d => Math.round((+parseYmd(d) - +startOfDay(new Date())) / DAY);
+const tKey = b => `${b.p}|${b.t || ''}|${b.g || ''}`;
+const pct = (x, y) => y ? `${Math.round(x / y * 100)}%` : '–';
+function targetOf(b){
+  const p = projectsById.get(b.p);
+  const t = b.t ? p?.tasks.find(x => x.id === b.t) : null;
+  let name, sub;
+  if (b.t) { name = t?.name || b.n || 'Unknown task'; sub = p?.name || 'Unknown project'; }
+  else if (b.g) { name = b.g; sub = `Any ${b.g} task in ${p?.name || 'unknown project'}`; }
+  else { name = p?.name || b.n || 'Unknown project'; sub = p?.tasks.length ? 'Any task in this project' : (p?.client || 'Project'); }
+  return { p, t, name, sub, color: p?.color || safeColor(b.c) || '#8A94A3' };
+}
+function matchKind(b, sg){
+  if (sg.p !== b.p) return null;
+  if (b.t) return sg.t === b.t ? 'exact' : 'close';
+  if (b.g) { const g = b.g.toLowerCase(), n = (sg.tn || '').trim().toLowerCase(); return n === g || groupOf(sg.tn)?.toLowerCase() === g ? 'exact' : 'close'; }
+  return 'exact';
+}
+
+// Tracked time for a day: from data already downloaded (sync or Summary), else from a saved snapshot. Never fetches.
+const normSeg = g => ({ s:g.s, e:g.e, p:g.keys[1], t:g.keys[2], tn:g.names[2], pn:g.names[1], c:g.pColor });
+function coveringRange(d){
+  const a = +parseYmd(d), b = +addDays(parseYmd(d), 1); let best = null;
+  for (const [k, v] of sumCache) if (k.startsWith(cache.ws + '|') && v.from <= a && v.to >= b && (!best || v.at > best.at)) best = v;
+  return best;
+}
+function dayActual(d){
+  if (!cache) return null;
+  const a = +parseYmd(d), b = a + DAY, v = coveringRange(d);
+  if (v) return { segs: (d === ymd(new Date()) ? withLive(v.segs) : v.segs).filter(g => g.e > a && g.s < b).map(normSeg) };
+  const snap = actuals[d];
+  if (snap && snap.ws === cache.ws && d !== ymd(new Date())) return { segs: snap.s.map(([s, e, p, t, tn, pn, c]) => ({ s, e, p, t, tn, pn, c })) };
+  return null;
+}
+// Keep tracked time for planned days so comparisons still work after the app closes (finished entries only).
+function snapshotActuals(){
+  if (!cache) return;
+  let changed = false;
+  for (const d of Object.keys(plans)) {
+    if (!plans[d].b.length || +parseYmd(d) > Date.now()) continue;
+    const v = coveringRange(d); if (!v) continue;
+    const a = +parseYmd(d), b = a + DAY;
+    actuals[d] = { ws: cache.ws, at: Date.now(), s: v.segs.filter(g => g.e > a && g.s < b).map(g => [g.s, g.e, g.keys[1], g.keys[2], g.names[2], g.names[1], g.pColor || null]) };
+    changed = true;
+  }
+  if (!changed) return;
+  const keep = ymd(addDays(new Date(), -180));
+  for (const d of Object.keys(actuals)) if (d < keep) delete actuals[d];
+  store.set(K.actual, actuals);
+}
+
+function compareDay(d, blocks, segs){
+  const a = +parseYmd(d), now = Date.now(), end = Math.min(a + DAY, now);
+  const c = { blocks:[], elapsed:0, exact:0, close:0, tracked:0, off:0, planned:0, doneMs:0, notInPlan:0, targets:new Map() };
+  for (const b of blocks) {
+    const bs = a + b.s * 60000, be = a + b.e * 60000, upto = Math.min(be, now), len = be - bs;
+    let ex = 0, cl = 0;
+    if (upto > bs) for (const g of segs) {
+      const o = overlap(g.s, g.e, bs, upto); if (!o) continue;
+      const m = matchKind(b, g); if (m === 'exact') ex += o; else if (m === 'close') cl += o;
+    }
+    const st = bs >= now ? 'next' : be > now ? 'now' : ex >= len * 0.8 ? 'done' : ex + cl >= len * 0.2 ? 'part' : 'miss';
+    c.blocks.push({ b, ex, cl, st });
+    if (upto > bs) { c.elapsed += upto - bs; c.exact += ex; c.close += cl; }
+    c.planned += len;
+    const k = tKey(b), tg = c.targets.get(k) || { b, planned:0, actual:0 };
+    tg.planned += len; c.targets.set(k, tg);
+  }
+  for (const g of segs) {
+    const o = overlap(g.s, g.e, a, end); if (!o) continue;
+    c.tracked += o;
+    let hit = false;
+    for (const tg of c.targets.values()) if (matchKind(tg.b, g) === 'exact') { tg.actual += o; hit = true; }
+    if (!hit) c.notInPlan += o;
+  }
+  for (const tg of c.targets.values()) c.doneMs += Math.min(tg.actual, tg.planned);
+  c.off = Math.max(0, c.tracked - c.exact - c.close);
+  return c;
+}
+
+// ----- Timer view: what the plan says right now -----
+function planNowInfo(){
+  const blocks = dayBlocks(ymd(new Date())); if (!blocks.length) return null;
+  const m = (Date.now() - +startOfDay(new Date())) / 60000;
+  const cur = blocks.find(b => b.s <= m && m < b.e);
+  if (cur) return { b:cur, kind:'now' };
+  const next = blocks.find(b => b.s > m && b.s - m <= 30);
+  return next ? { b:next, kind:'next' } : null;
+}
+function planNowEl(){
+  const info = cache && planNowInfo(); if (!info) return null;
+  const { b, kind } = info, tg = targetOf(b);
+  const onIt = running && matchKind(b, { p: running.projectId || 'none', t: running.taskId || 'none', tn: running.tName }) === 'exact';
+  const direct = b.t || (!b.g && !tg.p?.tasks.length);
+  const box = el('div', { class:'plan-now', id:'planNow' },
+    el('div', { class:'plan-now-info' },
+      el('div', { class:'plan-now-label', text: kind === 'now' ? `Planned now, until ${hm(b.e)}` : `Up next at ${hm(b.s)}` }),
+      el('div', { class:'plan-now-name', text: tg.name }),
+      el('div', { class:'plan-now-sub', text: tg.sub })),
+    onIt ? el('span', { class:'plan-now-state', text:'On plan ✓' })
+      : el('button', { class:'btn primary', type:'button', text: direct ? 'Start' : 'Choose', 'aria-label': `${direct ? 'Start' : 'Choose a task for'} ${tg.name}`, onclick: () => startPlanned(b) }));
+  box.style.setProperty('--pc', tg.color);
+  return box;
+}
+function startPlanned(b){
+  const tg = targetOf(b);
+  if (!tg.p || (b.t && !tg.t)) { toast("That item isn't in this workspace any more", true); return; }
+  if (b.t) { start(tg.p, tg.t); return; }
+  if (!b.g && !tg.p.tasks.length) { start(tg.p, null); return; }
+  query = b.g ? `${tg.p.name} ${b.g}` : tg.p.name;      // show matching tasks to pick from
+  $('search').value = query; activeIdx = 0; renderList(); $('search').focus();
+}
+function updatePlanNow(){
+  if (view !== 'timer' || query) return;
+  const cur = $('planNow'), next = planNowEl();
+  if (cur && next) cur.replaceWith(next); else if (cur) cur.remove();
+  else if (next) $('list').querySelector('.sec-head')?.before(next);
+}
+function planLineText(v, p){
+  const d = ymd(p.a), blocks = dayBlocks(d); if (!blocks.length) return null;
+  const c = compareDay(d, blocks, withLive(v.segs).map(normSeg));
+  if (!c.elapsed) return `Plan: ${blocks.length} block${blocks.length === 1 ? '' : 's'} today, first at ${hm(blocks[0].s)}`;
+  const ended = c.blocks.filter(r => r.st === 'done' || r.st === 'part' || r.st === 'miss');
+  const on = ended.filter(r => r.st === 'done').length;
+  return `Plan: ${pct(c.exact, c.elapsed)} on schedule${ended.length ? `, ${on} of ${ended.length} finished block${ended.length === 1 ? '' : 's'} on plan` : ' so far'}`;
+}
+
+// ----- Plan view -----
+function renderPlan(){
+  const box = $('plan');
+  if (!cache) { box.replaceChildren(el('div', { class:'empty', text:'Connect Clockify in Settings first.' })); return; }
+  const d = plan.date, blocks = dayBlocks(d), off = dayOffset(d);
+  const act = dayActual(d);
+  if (!act && off === 0) setTimeout(() => sync('missing'), 0);
+  const cmp = act ? compareDay(d, blocks, act.segs) : null;
+  const prevScroll = box.querySelector('.cal-scroll')?.scrollTop;
+  const out = [planHeadEl(d, off, blocks)];
+  if (blocks.length && cmp?.elapsed) out.push(scoresEl(cmp));
+  else if (blocks.length && off >= 0) out.push(el('p', { class:'hint plan-hint', text:`Scores appear once the first block starts at ${hm(blocks[0].s)}.` }));
+  if (!act && off < 0) out.push(el('div', { class:'plan-hint' },
+    el('p', { class:'hint', text:"Tracked time for this day isn't saved on this device." }),
+    el('button', { class:'btn', type:'button', text:'Load from Clockify (1 request)', onclick: e => loadPlanDay(d, e.target) })));
+  if (!blocks.length) out.push(el('p', { class:'hint plan-hint', text: fineMouse() ? 'Click or drag down the Plan column to add a block.' : 'Tap the Plan column to add a block.' }));
+  out.push(calendarEl(d, blocks, cmp, act));
+  if (blocks.length && cmp) out.push(planTableEl(d, cmp, off));
+  out.push(syncCardEl());
+  box.replaceChildren(...out);
+  const sc = box.querySelector('.cal-scroll');
+  if (plan.jump) {
+    plan.jump = false;
+    const m = off === 0 ? (Date.now() - +startOfDay(new Date())) / 60000 - 60 : (blocks[0]?.s ?? 8 * 60) - 30;
+    sc.scrollTop = Math.max(0, m * PX_MIN);
+  } else if (prevScroll != null) sc.scrollTop = prevScroll;
+}
+async function loadPlanDay(d, btn){
+  btn.disabled = true;
+  try { await fetchSegs(period('today', dayOffset(d))); } catch (err) { handleError(err); }
+  renderPlan();
+}
+function planHeadEl(d, off, blocks){
+  const date = parseYmd(d), wd = date.getDay(), wdName = fmtD(date, { weekday:'long' });
+  const go = n => { plan.date = ymd(addDays(date, n)); plan.jump = true; renderPlan(); };
+  const title = off === 0 ? 'Today' : off === -1 ? 'Yesterday' : off === 1 ? 'Tomorrow' : off < 0 ? `${-off} days ago` : `In ${off} days`;
+  const head = el('div', { class:'sum-head' },
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'Previous day', text:'‹', onclick: () => go(-1) }),
+    el('div', { class:'sum-title' }, el('div', { text:title }), el('div', { class:'sum-sub', text: fmtD(date, { weekday:'long', month:'long', day:'numeric' }) })),
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'Next day', text:'›', onclick: () => go(1) }));
+  const prev = dayBlocks(ymd(addDays(date, -1))), tpl = planTpl[wd] || [];
+  const btn = (text, onclick, cls = '') => el('button', { class:`btn ${cls}`, type:'button', text, onclick });
+  const actions = el('div', { class:'plan-actions' },
+    btn('+ Add block', () => addBlockAt(d), 'primary'),
+    prev.length ? btn(off === 0 ? 'Copy yesterday' : 'Copy previous day', () => replaceDay(d, prev)) : null,
+    tpl.length ? btn(`Use ${wdName} template`, () => replaceDay(d, tpl)) : null,
+    blocks.length ? btn('Save as template', () => templateDialog(d)) : null,
+    blocks.length ? btn('Clear day', () => { if (confirm(`Remove all ${blocks.length} blocks from this day?`)) { savePlanDay(d, []); renderPlan(); } }, 'danger') : null,
+    off !== 0 ? btn('Go to today', () => { plan.date = ymd(new Date()); plan.jump = true; renderPlan(); }) : null);
+  return el('div', {}, head, actions);
+}
+function replaceDay(d, src){
+  const cur = dayBlocks(d);
+  if (cur.length && !confirm(`Replace the ${cur.length} block${cur.length === 1 ? '' : 's'} on this day?`)) return;
+  savePlanDay(d, src.map(b => ({ ...b, id: newId() }))); snapshotActuals(); plan.jump = true; renderPlan();
+}
+function scoreEl(label, val, sub){
+  return el('div', { class:'score' }, el('div', { class:'score-label', text:label }), el('div', { class:'score-val', text:val }), el('div', { class:'score-sub', text:sub }));
+}
+function scoresEl(c){
+  const n = st => c.blocks.filter(r => r.st === st).length;
+  const counts = [['done','✓ on plan'], ['part','◐ partly'], ['miss','✗ missed'], ['now','● in progress'], ['next','upcoming']]
+    .map(([st, txt]) => n(st) ? `${n(st)} ${txt}` : null).filter(Boolean).join(' · ');
+  return el('div', {},
+    el('div', { class:'scores' },
+      scoreEl('On schedule', pct(c.exact, c.elapsed), c.close ? `+${pct(c.close, c.elapsed)} same project` : `${dur(c.exact)} of ${dur(c.elapsed)}`),
+      scoreEl('Got it done', pct(c.doneMs, c.planned), `${dur(c.doneMs)} of ${dur(c.planned)}`),
+      scoreEl('Off plan', dur(c.off), `of ${dur(c.tracked)} tracked`)),
+    el('div', { class:'plan-counts', text:counts }));
+}
+function calendarEl(d, blocks, cmp, act){
+  const a = +parseYmd(d), H = 24 * HOUR_PX;
+  const times = el('div', { class:'cal-times', 'aria-hidden':'true' });
+  for (let h = 1; h < 24; h++) { const t = el('span', { text: new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour:'numeric' }) }); t.style.top = `${h * HOUR_PX}px`; times.append(t); }
+  const lane = el('div', { class:'lane plan-lane', role:'group', 'aria-label':'Plan' });
+  const alane = el('div', { class:'lane act-lane', role:'group', 'aria-label':'Tracked time' });
+  for (const x of [times, lane, alane]) x.style.height = `${H}px`;
+  for (const r of (cmp ? cmp.blocks : blocks.map(b => ({ b })))) lane.append(blockEl(r));
+  if (act) for (const pc of actualPieces(a, act.segs, blocks)) alane.append(pieceEl(a, pc));
+  if (d === ymd(new Date())) for (const x of [lane, alane]) { const n = el('div', { class:'now-line' }); n.style.top = `${(Date.now() - a) / 60000 * PX_MIN}px`; x.append(n); }
+  wireLane(lane, d);
+  const key = (cls, txt) => { const i = el('i', { class:`ab ${cls}` }); i.style.setProperty('--pc', 'var(--go)'); return el('span', {}, i, txt); };
+  return el('div', { class:'cal' },
+    el('div', { class:'cal-grid' }, el('div'), el('div', { class:'cal-head', text:'Plan' }), el('div', { class:'cal-head', text: act || dayOffset(d) > 0 ? 'Tracked' : 'Tracked (not loaded)' })),
+    el('div', { class:'cal-scroll' }, el('div', { class:'cal-grid' }, times, lane, alane)),
+    el('div', { class:'cal-key' }, key('', 'Matches plan'), key('close', 'Same project'), key('off', 'Not in plan')));
+}
+function blockEl({ b, st, ex = 0, cl = 0 }){
+  const tg = targetOf(b), h = (b.e - b.s) * PX_MIN;
+  const mark = { done:'✓', part:'◐', miss:'✗', now:'●' }[st] || '';
+  const stTxt = { done:'on plan', part:'partly done', miss:'missed', now:'in progress', next:'upcoming' }[st];
+  const meta = `${hm(b.s)} – ${hm(b.e)}${st && st !== 'next' ? ` · ${dur(ex)}${cl ? ` +${dur(cl)} close` : ''}` : ''}`;
+  const blk = el('button', { class:`pb${st ? ' st-' + st : ''}${h < 40 ? ' short' : ''}`, type:'button', 'data-id': b.id,
+      title: `${tg.name}\n${tg.sub}\n${meta}`, 'aria-label': `${tg.name}, ${hm(b.s)} to ${hm(b.e)}${stTxt ? ', ' + stTxt : ''}. Edit`,
+      onclick: () => { if (!plan.suppress) openBlockEditor(plan.date, b); } },
+    el('span', { class:'pb-top' }, el('span', { class:'pb-name', text: tg.name }), mark ? el('span', { class:'pb-mark', text:mark, 'aria-hidden':'true' }) : null),
+    el('span', { class:'pb-meta', text: meta }),
+    el('span', { class:'pb-grip', 'aria-hidden':'true' }));
+  blk.style.top = `${b.s * PX_MIN}px`; blk.style.height = `${h - 2}px`; blk.style.setProperty('--pc', tg.color);
+  return blk;
+}
+// Split tracked entries at block edges so each piece can show whether it matched the plan at that time.
+function actualPieces(a, segs, blocks){
+  const out = [];
+  for (const g of segs) {
+    let s = Math.max(g.s, a); const e = Math.min(g.e, a + DAY); if (e <= s) continue;
+    const cuts = [e];
+    for (const b of blocks) for (const m of [a + b.s * 60000, a + b.e * 60000]) if (m > s && m < e) cuts.push(m);
+    for (const cut of cuts.sort((x, y) => x - y)) {
+      if (cut <= s) continue;
+      const mid = (s + cut) / 2, b = blocks.find(x => a + x.s * 60000 <= mid && mid < a + x.e * 60000);
+      out.push({ g, s, e:cut, kind: (b && matchKind(b, g)) || 'off' }); s = cut;
+    }
+  }
+  return out;
+}
+function pieceEl(a, pc){
+  const g = pc.g, hasTask = g.tn && g.tn !== 'No task', name = hasTask ? g.tn : g.pn, h = (pc.e - pc.s) / 60000 * PX_MIN;
+  const lbl = `${name}${hasTask ? ', ' + g.pn : ''}: ${fmtT(pc.s)} to ${fmtT(pc.e)} (${dur(pc.e - pc.s)}), ${{ exact:'matches plan', close:'same project as plan', off:'not in plan' }[pc.kind]}`;
+  const x = el('div', { class:`ab ${pc.kind === 'exact' ? '' : pc.kind}`, title: lbl, onclick: () => toast(lbl) }, h >= 18 ? el('span', { class:'ab-name', text:name }) : null);
+  x.style.top = `${(pc.s - a) / 60000 * PX_MIN}px`; x.style.height = `${Math.max(2, h - 1)}px`; x.style.setProperty('--pc', g.c || '#8A94A3');
+  return x;
+}
+function planTableEl(d, c, off){
+  const rows = [...c.targets.values()].sort((x, y) => Math.abs(y.actual - y.planned) - Math.abs(x.actual - x.planned));
+  const card = el('div', { class:'card' }, el('h4', { text: off === 0 ? 'Planned vs tracked so far' : 'Planned vs tracked' }),
+    el('div', { class:'pt-head' }, el('span', { text:'Item' }), el('span', { text:'Plan' }), el('span', { text:'Tracked' }), el('span', { text:'Diff' })));
+  for (const tg of rows) {
+    const t = targetOf(tg.b), diff = tg.actual - tg.planned;
+    const dot = el('span', { class:'dot' }); dot.style.background = t.color;
+    const diffTxt = Math.abs(diff) < 60000 ? '±0m' : `${diff > 0 ? '+' : '−'}${dur(Math.abs(diff))}`;
+    card.append(el('button', { class:'pt-row', type:'button', 'aria-label': `${t.name}: planned ${dur(tg.planned)}, tracked ${dur(tg.actual)}. Open in Summary`, onclick: () => openSummaryFor(tg.b, d) },
+      el('span', { class:'pt-name' }, dot, el('span', { class:'label' }, el('div', { class:'title', text:t.name }), el('div', { class:'meta', text:t.sub }))),
+      el('span', { class:'pt-num', text: dur(tg.planned) }), el('span', { class:'pt-num', text: dur(tg.actual) }),
+      el('span', { class:`pt-num pt-diff${Math.abs(diff) < 60000 ? '' : diff > 0 ? ' over' : ' under'}`, text: diffTxt })));
+  }
+  if (c.notInPlan >= 60000) card.append(el('div', { class:'pt-row' },
+    el('span', { class:'pt-name' }, el('span', { class:'label' }, el('div', { class:'title', text:'Not in plan' }), el('div', { class:'meta', text:'Tracked items with no block today' }))),
+    el('span', { class:'pt-num', text:'–' }), el('span', { class:'pt-num', text: dur(c.notInPlan) }), el('span')));
+  card.append(el('div', { class:'sum-sub', style:'margin-top:10px', text:'Tracked counts time on each item at any time of the day. Tap a row to open it in Summary.' }));
+  return card;
+}
+function openSummaryFor(b, d){
+  const p = projectsById.get(b.p); if (!p) return;
+  sum.kind = 'today'; sum.offset = Math.min(0, dayOffset(d)); store.set(K.sumKind, 'today');
+  sum.path = b.t ? [p.client, p.id, b.t] : [p.client, p.id];
+  sum.names = [p.client || 'No category', p.name, ...(b.t ? [targetOf(b).name] : [])];
+  sum.taskCol = p.color; sum.selDay = sum.selSeg = null;
+  setView('summary');
+}
+
+// ----- adding, moving and resizing blocks -----
+function freeAt(d, m, skipId){
+  const bl = dayBlocks(d).filter(b => b.id !== skipId);
+  if (bl.some(b => b.s <= m && m < b.e)) return null;
+  return { lo: Math.max(0, ...bl.filter(b => b.e <= m).map(b => b.e)), hi: Math.min(1440, ...bl.filter(b => b.s > m).map(b => b.s)) };
+}
+function addBlockAt(d){
+  let m = dayOffset(d) === 0 ? Math.ceil((Date.now() - +startOfDay(new Date())) / 60000 / SLOT) * SLOT : 9 * 60;
+  for (; m < 1440; m += SLOT) { const fr = freeAt(d, m); if (fr) { openBlockEditor(d, null, { s:m, e: Math.min(m + 60, fr.hi) }); return; } }
+  toast('No free time left on this day', true);
+}
+const suppressClick = () => { plan.suppress = true; setTimeout(() => { plan.suppress = false; }, 0); };
+function wireLane(lane, d){
+  const slotAt = y => Math.max(0, Math.min(1440 / SLOT - 1, Math.floor((y - lane.getBoundingClientRect().top) / (SLOT * PX_MIN))));
+  lane.addEventListener('click', e => {
+    if (e.target !== lane || plan.suppress) return;
+    const m = slotAt(e.clientY) * SLOT, fr = freeAt(d, m); if (!fr) return;
+    openBlockEditor(d, null, { s:m, e: Math.min(m + 60, fr.hi) });
+  });
+  // Mouse only: drag to draw, move or resize. Touch keeps scrolling and uses tap + the editor instead.
+  lane.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const bEl = e.target.closest('.pb');
+    if (bEl) dragBlock(e, bEl, d); else if (e.target === lane) dragCreate(e, lane, d, slotAt);
+  });
+}
+function trackDrag(move, up){
+  plan.drag = true;
+  const done = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', done); removeEventListener('pointercancel', done); plan.drag = null; up(); };
+  addEventListener('pointermove', move); addEventListener('pointerup', done); addEventListener('pointercancel', done);
+}
+function dragCreate(e, lane, d, slotAt){
+  const m0 = slotAt(e.clientY) * SLOT, fr = freeAt(d, m0); if (!fr) return;
+  e.preventDefault();
+  let s = m0, en = m0 + SLOT, moved = false;
+  const ghost = el('div', { class:'pb ghost' });
+  trackDrag(ev => {
+    const m = slotAt(ev.clientY) * SLOT; if (m !== m0) moved = true; if (!moved) return;
+    s = Math.max(fr.lo, Math.min(m0, m)); en = Math.min(fr.hi, Math.max(m0, m) + SLOT);
+    ghost.style.top = `${s * PX_MIN}px`; ghost.style.height = `${(en - s) * PX_MIN - 2}px`; ghost.textContent = `${hm(s)} – ${hm(en)}`;
+    if (!ghost.isConnected) lane.append(ghost);
+  }, () => { ghost.remove(); if (moved) { suppressClick(); openBlockEditor(d, null, { s, e:en }); } });
+}
+function dragBlock(e, bEl, d){
+  const b = dayBlocks(d).find(x => x.id === bEl.dataset.id); if (!b) return;
+  const resize = e.clientY > bEl.getBoundingClientRect().bottom - 8;
+  const others = dayBlocks(d).filter(x => x.id !== b.id), len = b.e - b.s, y0 = e.clientY;
+  const lo = Math.max(0, ...others.filter(x => x.e <= b.s).map(x => x.e)), hi = Math.min(1440, ...others.filter(x => x.s >= b.e).map(x => x.s));
+  let s = b.s, en = b.e, moved = false;
+  e.preventDefault();
+  trackDrag(ev => {
+    if (Math.abs(ev.clientY - y0) > 3) moved = true; if (!moved) return;
+    const dm = Math.round((ev.clientY - y0) / PX_MIN / SLOT) * SLOT;
+    if (resize) en = Math.max(b.s + SLOT, Math.min(hi, b.e + dm)); else { s = Math.max(lo, Math.min(hi - len, b.s + dm)); en = s + len; }
+    bEl.classList.add('dragging'); bEl.style.top = `${s * PX_MIN}px`; bEl.style.height = `${(en - s) * PX_MIN - 2}px`;
+    bEl.querySelector('.pb-meta').textContent = `${hm(s)} – ${hm(en)}`;
+  }, () => {
+    if (!moved) return;
+    suppressClick();
+    if (s !== b.s || en !== b.e) { savePlanDay(d, [...others, { ...b, s, e:en }]); snapshotActuals(); }
+    renderPlan();
+  });
+}
+
+// ----- dialogs -----
+function openDialog(title, ...body){
+  const dlg = el('dialog', { class:'sheet', 'aria-label': title }, el('div', { class:'sheet-in' }, el('h3', { text:title }), ...body));
+  dlg.addEventListener('close', () => dlg.remove());
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });   // backdrop
+  document.body.append(dlg); dlg.showModal();
+  return dlg;
+}
+function planCandidates(q){
+  const out = [];
+  if (!q) {   // recently planned items, then Quick start items
+    const seen = new Set();
+    const add = ref => {
+      const p = projectsById.get(ref.p), k = tKey(ref);
+      if (!p || seen.has(k) || (ref.t && !p.tasks.some(t => t.id === ref.t))) return;
+      seen.add(k); const tg = targetOf(ref); out.push({ ref, name:tg.name, sub:tg.sub, color:tg.color });
+    };
+    for (const d of Object.keys(plans).sort().reverse()) { for (const b of plans[d].b) add({ p:b.p, t:b.t || null, g:b.g || null }); if (out.length >= 6) break; }
+    for (const x of quickItems()) add({ p:x.p.id, t:x.t?.id || null, g:null });
+    return out.slice(0, 10);
+  }
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  for (const p of cache.projects) {
+    const groups = [...new Set(p.tasks.map(t => groupOf(t.name)).filter(Boolean))];
+    const cand = [{ ref:{ p:p.id }, name:p.name, sub: p.tasks.length ? 'Project, any task' : (p.client || 'Project'), hay:`${p.client} ${p.name}` }]
+      .concat(groups.map(g => ({ ref:{ p:p.id, g }, name:`${g} (any)`, sub:`Any ${g} task in ${p.name}`, hay:`${p.client} ${p.name} ${g}` })))
+      .concat(p.tasks.map(t => ({ ref:{ p:p.id, t:t.id }, name:t.name, sub:p.name, hay:`${p.client} ${p.name} ${t.name}` })));
+    for (const c of cand) {
+      if (!words.every(w => c.hay.toLowerCase().includes(w))) continue;
+      const n = c.name.toLowerCase();
+      out.push({ ...c, color:p.color, score: n.startsWith(words[0]) ? 0 : n.includes(words[0]) ? 1 : 2 });
+    }
+  }
+  return out.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name)).slice(0, 40);
+}
+const sameRef = (a, b) => !!a && !!b && tKey(a) === tKey(b);
+function openBlockEditor(d, b, range){
+  const ed = { target: b ? { p:b.p, t:b.t || null, g:b.g || null } : null };
+  const q = el('input', { class:'search', type:'search', placeholder:'Search tasks, groups or projects', autocomplete:'off', spellcheck:'false', 'aria-label':'What will you work on?' });
+  const chosen = el('div', { class:'pick-chosen' }), pick = el('div', { class:'pick', role:'listbox', 'aria-label':'Choices' });
+  const from = el('select', { id:'planFrom' }), to = el('select', { id:'planTo' });
+  for (let m = 0; m < 1440; m += SLOT) from.append(el('option', { value:m, text:hm(m) }));
+  for (let m = SLOT; m <= 1440; m += SLOT) to.append(el('option', { value:m, text: m === 1440 ? 'Midnight' : hm(m) }));
+  from.value = b ? b.s : range.s; to.value = b ? b.e : range.e;
+  let items = [], active = 0;
+  const showChosen = () => {
+    if (!ed.target) { chosen.replaceChildren(el('span', { class:'muted', text:'Pick what you plan to work on.' })); return; }
+    const tg = targetOf(ed.target), dot = el('span', { class:'dot' }); dot.style.background = tg.color;
+    chosen.replaceChildren(dot, el('b', { text:tg.name }), el('span', { class:'muted', text:tg.sub }));
+  };
+  const draw = () => {
+    items = planCandidates(q.value.trim()); active = Math.max(0, Math.min(active, items.length - 1));
+    if (!items.length) { pick.replaceChildren(el('div', { class:'empty', style:'padding:16px', text:'Nothing matches.' })); return; }
+    pick.replaceChildren(...items.map((c, i) => {
+      const dot = el('span', { class:'dot' }); if (c.color) dot.style.background = c.color;
+      return el('button', { class:`row${i === active ? ' active' : ''}`, type:'button', role:'option', 'aria-selected': String(sameRef(c.ref, ed.target)),
+          onclick: () => { ed.target = c.ref; active = i; showChosen(); draw(); } },
+        dot, el('span', { class:'label' }, el('div', { class:'title', text:c.name }), el('div', { class:'meta', text:c.sub })));
+    }));
+  };
+  const save = () => {
+    const s = +from.value, e = +to.value;
+    if (!ed.target) { toast('Pick what you plan to work on', true); q.focus(); return; }
+    if (e <= s) { toast('The end time must be after the start time', true); return; }
+    const others = dayBlocks(d).filter(x => x.id !== b?.id), clash = others.find(x => x.s < e && s < x.e);
+    if (clash) { toast(`Overlaps ${targetOf(clash).name}, ${hm(clash.s)} – ${hm(clash.e)}`, true); return; }
+    const tg = targetOf(ed.target);
+    savePlanDay(d, [...others, { id: b?.id || newId(), s, e, p: ed.target.p, t: ed.target.t || null, g: ed.target.g || null, n: tg.name, c: tg.color }]);
+    dlg.close(); snapshotActuals(); renderPlan();
+  };
+  q.addEventListener('input', () => { active = 0; draw(); });
+  q.addEventListener('keydown', e => {   // arrows choose, Enter picks the highlighted item and saves
+    if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, items.length - 1); draw(); pick.querySelector('.active')?.scrollIntoView({ block:'nearest' }); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); draw(); pick.querySelector('.active')?.scrollIntoView({ block:'nearest' }); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (q.value.trim() && items[active]) { ed.target = items[active].ref; showChosen(); } save(); }
+  });
+  const dlg = openDialog(b ? 'Edit block' : 'Plan a block', chosen, q, pick,
+    el('div', { class:'times-row' },
+      el('div', { class:'field' }, el('label', { for:'planFrom', text:'From' }), from),
+      el('div', { class:'field' }, el('label', { for:'planTo', text:'To' }), to)),
+    el('div', { class:'btns' },
+      el('button', { class:'btn primary', type:'button', text:'Save', onclick: save }),
+      el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() }),
+      b ? el('button', { class:'btn danger', type:'button', text:'Delete', onclick: () => { savePlanDay(d, dayBlocks(d).filter(x => x.id !== b.id)); dlg.close(); renderPlan(); } }) : null));
+  showChosen(); draw(); q.focus();
+}
+function templateDialog(d){
+  const date = parseYmd(d), ws = WD[cache?.weekStart] ?? 1;
+  const boxes = [0,1,2,3,4,5,6].map(i => (ws + i) % 7).map(w => {
+    const cb = el('input', { type:'checkbox', value:w }); cb.checked = w === date.getDay();
+    return el('label', { class:'check' }, cb, fmtD(new Date(2024, 0, 7 + w), { weekday:'short' }));
+  });
+  const dlg = openDialog('Save as template',
+    el('p', { class:'hint', style:'margin:0', text:`Saves this day's ${dayBlocks(d).length} blocks. On those weekdays, "Use template" copies them in.` }),
+    el('div', { class:'days' }, boxes),
+    el('div', { class:'btns' },
+      el('button', { class:'btn primary', type:'button', text:'Save template', onclick: () => {
+        const ws2 = boxes.map(l => l.firstChild).filter(cb => cb.checked).map(cb => +cb.value);
+        if (!ws2.length) { toast('Pick at least one weekday', true); return; }
+        for (const w of ws2) planTpl[w] = dayBlocks(d).map(b => ({ ...b }));
+        store.set(K.planTpl, planTpl); dlg.close(); toast(`Template saved for ${ws2.length} weekday${ws2.length === 1 ? '' : 's'}`); renderPlan(); } }),
+      el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() })));
+}
+
+// ----- moving plans between devices (no network: clipboard or a file) -----
+function exportText(){ return JSON.stringify({ app:'quick-timer-plan', v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl }); }
+function cleanBlocks(arr){
+  if (!Array.isArray(arr)) return [];
+  const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
+  const out = arr.filter(x => x && Number.isInteger(x.s) && Number.isInteger(x.e) && x.s >= 0 && x.e <= 1440 && x.e > x.s && x.s % SLOT === 0 && x.e % SLOT === 0 && str(x.p, 64))
+    .slice(0, 96).map(x => ({ id: typeof x.id === 'string' && /^[\w-]{1,32}$/.test(x.id) ? x.id : newId(), s:x.s, e:x.e,
+      p: str(x.p, 64), t: str(x.t, 64), g: str(x.g, 120), n: str(x.n, 250) || '', c: safeColor(x.c) }))
+    .sort((a, b) => a.s - b.s);
+  return out.filter((b, i) => !i || b.s >= out[i - 1].e);   // drop overlaps
+}
+function importText(txt){
+  let o; try { o = JSON.parse(txt); } catch { o = null; }
+  if (!o || o.app !== 'quick-timer-plan' || typeof o.plans !== 'object' || !o.plans) throw new Error("That isn't a Quick Timer plan export.");
+  let days = 0;
+  for (const [d, day] of Object.entries(o.plans)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !day || typeof day !== 'object') continue;
+    const at = Number(day.at) || 0;
+    if (plans[d] && (plans[d].at || 0) >= at) continue;   // the more recently changed day wins
+    plans[d] = { at, b: cleanBlocks(day.b) }; days++;
+  }
+  if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) if (Array.isArray(o.templates[w])) planTpl[w] = cleanBlocks(o.templates[w]);
+  store.set(K.plan, plans); store.set(K.planTpl, planTpl); snapshotActuals();
+  const other = o.ws && cache && o.ws !== cache.ws ? ' They came from a different workspace, so some items may show as unknown.' : '';
+  toast(`Imported ${days} day${days === 1 ? '' : 's'}.${other}`, !!other);
+  renderPlan();
+}
+function syncCardEl(){
+  const btn = (text, onclick) => el('button', { class:'btn', type:'button', text, onclick });
+  return el('div', { class:'card' }, el('h4', { text:'Plans on your other devices' }),
+    el('p', { class:'hint', style:'margin:0 0 10px', text:"Plans are saved only in this browser. Copy them here and paste them on another device, or use a file. When both have the same day, the one changed most recently wins." }),
+    el('div', { class:'btns' },
+      btn('Copy plans', copyPlans), btn('Paste plans', pasteDialog), btn('Save file', savePlanFile), btn('Open file', openPlanFile)));
+}
+function copyPlans(){
+  const txt = exportText();
+  const manual = () => { const ta = el('textarea', { readonly:'', 'aria-label':'Exported plans' }); ta.value = txt; openDialog('Copy these plans', ta); ta.select(); };
+  if (!navigator.clipboard) { manual(); return; }
+  navigator.clipboard.writeText(txt).then(() => toast('Plans copied. Paste them on your other device.'), manual);
+}
+function pasteDialog(){
+  const ta = el('textarea', { 'aria-label':'Paste exported plans here', placeholder:'Paste the copied plans here' });
+  const dlg = openDialog('Paste plans', ta, el('div', { class:'btns', style:'margin-top:12px' },
+    el('button', { class:'btn primary', type:'button', text:'Import', onclick: () => { try { importText(ta.value.trim()); dlg.close(); } catch (err) { toast(err.message, true); } } }),
+    el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() })));
+  ta.focus();
+}
+function savePlanFile(){
+  const url = URL.createObjectURL(new Blob([exportText()], { type:'application/json' }));
+  const a = el('a', { href:url, download:`quick-timer-plans-${ymd(new Date())}.json` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function openPlanFile(){
+  const inp = el('input', { type:'file', accept:'.json,application/json' });
+  inp.addEventListener('change', async () => {
+    const f = inp.files?.[0]; if (!f) return;
+    if (f.size > 2e6) { toast('That file is too large to be a plan export.', true); return; }
+    try { importText(await f.text()); } catch (err) { toast(err.message, true); }
+  });
+  inp.click();
+}
+// Local re-draw only: moves the "now" line, updates block states and the Timer view's plan card.
+setInterval(() => { updatePlanNow(); if (view === 'plan' && !plan.drag && !document.querySelector('dialog[open]')) renderPlan(); }, 30000);
 
 // ---------- boot ----------
 indexCache(); renderAll();
