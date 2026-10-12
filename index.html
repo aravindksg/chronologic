@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#151A21" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Quick Timer</title>
+<title>Chronologic</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%8F%B1%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <style>
 :root{
@@ -640,7 +640,7 @@ function renderRunning(){
 function tick(){
   const txt = running ? fmt(Date.now() - running.start) : '0:00:00';
   $('nowDigits').textContent = txt;
-  document.title = running ? `${txt} ${running.tName || running.pName}` : 'Quick Timer';
+  document.title = running ? `${txt} ${running.tName || running.pName}` : 'Chronologic';
 }
 function isRunning(p, t){ return running && running.projectId === p.id && (running.taskId || null) === (t?.id || null); }
 function makeRow(p, t, opts = {}){
@@ -1931,7 +1931,8 @@ function templateDialog(d){
 }
 
 // ----- moving plans between devices (no network: clipboard or a file) -----
-function exportText(){ return JSON.stringify({ app:'quick-timer-plan', v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl }); }
+const PLAN_APP = 'chronologic-plan', PLAN_APPS = [PLAN_APP, 'quick-timer-plan'];   // older exports used the Quick Timer name
+function exportText(){ return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl }); }
 function cleanBlocks(arr){
   if (!Array.isArray(arr)) return [];
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
@@ -1943,7 +1944,7 @@ function cleanBlocks(arr){
 }
 function importText(txt){
   let o; try { o = JSON.parse(txt); } catch { o = null; }
-  if (!o || o.app !== 'quick-timer-plan' || typeof o.plans !== 'object' || !o.plans) throw new Error("That isn't a Quick Timer plan export.");
+  if (!o || !PLAN_APPS.includes(o.app) || typeof o.plans !== 'object' || !o.plans) throw new Error("That isn't a Chronologic plan export.");
   let days = 0;
   for (const [d, day] of Object.entries(o.plans)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !day || typeof day !== 'object') continue;
@@ -1985,7 +1986,7 @@ async function planLink(){
   for (let days = all.slice(); ; days.pop()) {
     const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
     const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
-    const json = JSON.stringify({ app:'quick-timer-plan', v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl });
+    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl });
     const url = `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
     if (url.length <= LINK_MAX || !days.length) return { url, days: days.length, left: all.length - days.length, fits: url.length <= LINK_MAX };
   }
@@ -1994,7 +1995,7 @@ async function showPlanQr(){
   let link;
   try { link = await planLink(); } catch { toast("This browser can't make a plan link. Use Copy plans instead.", true); return; }
   if (!link.fits) { toast('Your templates are too large for a QR code. Use Copy plans or a file instead.', true); return; }
-  const n = link.days, msg = `Scan with your phone's camera. It opens Quick Timer and asks before importing ${n} day${n === 1 ? '' : 's'} (today onward)${Object.keys(planTpl).length ? ' plus your templates' : ''}.`
+  const n = link.days, msg = `Scan with your phone's camera. It opens Chronologic and asks before importing ${n} day${n === 1 ? '' : 's'} (today onward)${Object.keys(planTpl).length ? ' plus your templates' : ''}.`
     + (link.left ? ` ${link.left} later day${link.left === 1 ? '' : 's'} didn't fit; use Copy plans for those.` : '');
   openDialog('Scan to copy plans', el('div', { class:'qr' }, qrSvg(link.url)), el('p', { class:'hint', style:'margin:12px 0' , text: msg }),
     el('div', { class:'btns' }, el('button', { class:'btn', type:'button', text:'Done', onclick: e => e.target.closest('dialog').close() })));
@@ -2002,7 +2003,7 @@ async function showPlanQr(){
 async function sharePlanLink(){
   let link;
   try { link = await planLink(); } catch { toast("This browser can't make a plan link. Use Save file instead.", true); return; }
-  try { await navigator.share({ title:'Quick Timer plans', url: link.url }); }
+  try { await navigator.share({ title:'Chronologic plans', url: link.url }); }
   catch (err) { if (err.name !== 'AbortError') toast("Couldn't open sharing. Use Save file instead.", true); }
 }
 async function importFromHash(){
@@ -2163,7 +2164,7 @@ function pasteDialog(){
 }
 function savePlanFile(){
   const url = URL.createObjectURL(new Blob([exportText()], { type:'application/json' }));
-  const a = el('a', { href:url, download:`quick-timer-plans-${ymd(new Date())}.json` });
+  const a = el('a', { href:url, download:`chronologic-plans-${ymd(new Date())}.json` });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function openPlanFile(){
