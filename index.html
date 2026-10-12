@@ -224,7 +224,7 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 .cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);margin-top:12px;overflow:hidden}
 .cal-grid{display:grid;grid-template-columns:46px minmax(0,1fr) minmax(0,.6fr);column-gap:6px;padding-right:8px}
 .cal-head{font-size:12px;font-weight:600;color:var(--muted);padding:10px 2px 8px}
-.cal-scroll{max-height:min(66vh,1560px);overflow-y:auto;overscroll-behavior:contain;border-top:1px solid var(--line)}
+.cal-scroll{max-height:min(66vh,1560px);overflow-y:auto;border-top:1px solid var(--line)}
 .cal-scroll .cal-grid{padding-top:10px;padding-bottom:10px}
 .cal-times{position:relative}
 .cal-times span{position:absolute;right:0;transform:translateY(-50%);font-size:11px;color:var(--muted);white-space:nowrap}
@@ -1476,7 +1476,10 @@ const SLOT = 15, HOUR_PX = 64, PX_MIN = HOUR_PX / 60;
 const fineMouse = () => matchMedia('(pointer: fine)').matches;
 
 const dayBlocks = d => plans[d]?.b || [];
-function savePlanDay(d, blocks){ plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans); }
+function savePlanDay(d, blocks){
+  plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans);
+  try { navigator.storage?.persist?.(); } catch {}   // ask the browser not to clear saved plans when space runs low
+}
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const groupOf = name => { const i = (name || '').indexOf(':'); return i > 0 ? name.slice(0, i).trim() : null; };
 const hm = min => new Date(2000, 0, 1, Math.floor(min / 60), min % 60).toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
@@ -1655,6 +1658,7 @@ function planHeadEl(d, off, blocks){
     tpl.length ? btn(`Use ${wdName} template`, () => replaceDay(d, tpl)) : null,
     blocks.length ? btn('Save as template', () => templateDialog(d)) : null,
     blocks.length ? btn('Clear day', () => { if (confirm(`Remove all ${blocks.length} blocks from this day?`)) { savePlanDay(d, []); renderPlan(); } }, 'danger') : null,
+    fineMouse() ? btn('Send to phone', showPlanQr) : navigator.share ? btn('Send to computer', sharePlanLink) : null,
     off !== 0 ? btn('Go to today', () => { plan.date = ymd(new Date()); plan.jump = true; renderPlan(); }) : null);
   return el('div', {}, head, actions);
 }
