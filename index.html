@@ -294,6 +294,33 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .qr{background:#fff;border-radius:var(--radius-sm);padding:4px;max-width:520px;margin:0 auto}
 .qr svg{display:block;width:100%;height:auto}
 .sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
+/* Counters */
+.ctile{min-height:96px}
+.cnum{display:flex;align-items:baseline;gap:4px;font-size:12px;color:var(--muted)}
+.cnum b{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:24px;font-weight:600;color:var(--ink);line-height:1.15}
+.tile-sub.met{color:var(--go);font-weight:600}
+.ctile .tile-sub{white-space:normal}
+.times-row .field{min-width:0}
+.times-row select,.times-row input{min-width:0;width:100%}
+.crange{margin-top:14px}
+.crange button{padding:8px 2px;font-size:14px}
+.ccard-top{display:flex;align-items:center;gap:10px}
+.ccard-top .label{flex:1;min-width:0}
+.ccard-top .title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ccard-top .meta{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ccount{text-align:right;display:flex;flex-direction:column;align-items:flex-end}
+.ccount b{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;line-height:1.1}
+.partial{font-size:11px;color:var(--run);font-weight:600}
+.cbar-wrap{margin-top:10px}
+.cbars{display:block;width:100%;height:40px}
+.cbar-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px}
+.cnotes{text-align:left;margin-top:8px}
+.ctargets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;font-size:14px;max-width:100%}
+.chip span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-x{border:0;background:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;width:24px;height:24px;border-radius:50%}
+.chip-x:hover{color:var(--ink);background:var(--bg)}
+.field input[type=number]{width:100%}
 .hidden{display:none !important}
 @media (prefers-reduced-motion: reduce){*{transition:none !important}}
 </style>
@@ -318,6 +345,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
         <button type="button" role="radio" data-kind="week">Week</button>
         <button type="button" role="radio" data-kind="month">Month</button>
         <button type="button" role="radio" data-kind="custom">Custom</button>
+        <button type="button" role="radio" data-kind="counts">Counts</button>
       </div>
     </div>
     <div class="searchbar" id="timerBar">
@@ -398,7 +426,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 'use strict';
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
-  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual' };
+  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -544,7 +572,7 @@ async function sync(mode = 'auto'){
   }
   syncing = true; lastSyncTry = now;
   const p = period('today', 0);
-  try { sumCache.delete(todayKey(p)); await fetchSegs(p); }
+  try { sumCache.delete(todayKey(p)); await fetchSegs(p, countsGapFrom(p)); }
   catch (err) { if (mode === 'user' || err.status === 401 || err.status === 429) handleError(err); }
   finally { syncing = false; renderAll(); }
 }
@@ -613,7 +641,7 @@ function recordStopped(entry, fallback, endIso){
   else if (fallback) seg = { ...runningSeg(fallback), e: Date.parse(endIso), live:false };
   if (!seg || !(seg.e > seg.s)) return;
   for (const v of sumCache.values()) if (seg.e > v.from && !v.segs.some(g => g.id && g.id === seg.id)) v.segs.push(seg);
-  snapshotActuals();
+  snapshotActuals(); countAdd(seg);
 }
 function handleError(err){
   toast(err.message || 'Something went wrong', true);
@@ -810,6 +838,7 @@ function renderList(){
   const pn = planNowEl(); if (pn) list.append(pn);
   quickSection(list);
   list.append(todayCardEl());
+  countersSection(list);
   renderGroups(list);
 }
 function renderAll(){ renderRunning(); renderList(); if (view === 'plan' && !plan.drag) renderPlan(); }
@@ -947,10 +976,10 @@ $('wsSelect').addEventListener('change', async e => {
   try { sumCache.clear(); await refreshData(true); await sync('user'); showSettings(false); } catch (err) { handleError(err); }
 });
 $('forgetBtn').addEventListener('click', () => {
-  if (!confirm('Remove the API key, cached projects and your plans from this browser? Copy or save your plans first (Plan tab) to keep them.')) return;
+  if (!confirm('Remove the API key, cached projects, your plans and counters from this browser? Copy or save your plans first (Plan tab) to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -1039,15 +1068,21 @@ function runningSeg(r = running){
 }
 // Cached data holds finished entries only; the running timer is added live from local state.
 function withLive(segs){ const r = runningSeg(); return r ? segs.filter(g => g.id !== r.id).concat([r]) : segs; }
-async function fetchSegs(p){
-  const from = addDays(p.pa, -1), nowMs = Date.now(), to = +p.b < nowMs ? p.b : new Date(nowMs);
-  const key = `${cache.ws}|${+from}|${+p.b}`;
-  if (sumCache.has(key)) return sumCache.get(key);
+async function fetchEntries(from, to){
   const entries = []; const size = 1000;
   for (let page = 1; page <= 20; page++) {
     const batch = await api(`/workspaces/${cache.ws}/user/${cache.userId}/time-entries?start=${isoOf(from)}&end=${isoOf(to)}&hydrated=true&page=${page}&page-size=${size}`);
     entries.push(...batch); if (batch.length < size) break;
   }
+  return entries;
+}
+// extraFrom: reach further back in the same request (used by sync to fill a gap in counter data).
+async function fetchSegs(p, extraFrom){
+  const base = addDays(p.pa, -1), nowMs = Date.now(), to = +p.b < nowMs ? p.b : new Date(nowMs);
+  const from = extraFrom && extraFrom < +base ? new Date(extraFrom) : base;
+  const key = `${cache.ws}|${+base}|${+p.b}`;
+  if (sumCache.has(key)) return sumCache.get(key);
+  const entries = await fetchEntries(from, to);
   const segs = []; let live = null;
   for (const e of entries) {
     if (!e.timeInterval?.start) continue;
@@ -1059,7 +1094,7 @@ async function fetchSegs(p){
   if (+p.b > nowMs) { running = live ? toRunning(live) : null; lastSync = nowMs; }
   const v = { from: +from, to: +p.b, at: nowMs, segs, live };
   sumCache.set(key, v);
-  snapshotActuals();
+  snapshotActuals(); countIngest(+from, +to, segs);
   return v;
 }
 
@@ -1112,6 +1147,7 @@ async function loadSummary(){
   renderSummaryShell();
   const box = $('summary');
   if (!cache) { box.replaceChildren(el('div', { class:'empty', text:'Connect Clockify in Settings first.' })); return; }
+  if (sum.kind === 'counts') { ++sum.token; renderCounts(); return; }
   const p = period();
   const token = ++sum.token;
   const key = `${cache.ws}|${+addDays(p.pa, -1)}|${+p.b}`;
@@ -1932,7 +1968,7 @@ function templateDialog(d){
 
 // ----- moving plans between devices (no network: clipboard or a file) -----
 const PLAN_APP = 'chronologic-plan', PLAN_APPS = [PLAN_APP, 'quick-timer-plan'];   // older exports used the Quick Timer name
-function exportText(){ return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl }); }
+function exportText(){ return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters }); }
 function cleanBlocks(arr){
   if (!Array.isArray(arr)) return [];
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
@@ -1953,6 +1989,8 @@ function importText(txt){
     plans[d] = { at, b: cleanBlocks(day.b) }; days++;
   }
   if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) if (Array.isArray(o.templates[w])) planTpl[w] = cleanBlocks(o.templates[w]);
+  const oc = cleanCounters(o.counters);
+  if (oc && (!counters || oc.at > (counters.at || 0))) { counters = oc; store.set(K.counters, counters); }
   store.set(K.plan, plans); store.set(K.planTpl, planTpl); snapshotActuals();
   const other = o.ws && cache && o.ws !== cache.ws ? ' They came from a different workspace, so some items may show as unknown.' : '';
   toast(`Imported ${days} day${days === 1 ? '' : 's'}.${other}`, !!other);
@@ -1986,7 +2024,7 @@ async function planLink(){
   for (let days = all.slice(); ; days.pop()) {
     const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
     const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
-    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl });
+    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters });
     const url = `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
     if (url.length <= LINK_MAX || !days.length) return { url, days: days.length, left: all.length - days.length, fits: url.length <= LINK_MAX };
   }
@@ -2013,7 +2051,7 @@ async function importFromHash(){
   let txt, o;
   try { txt = await inflate(fromB64url(m[1])); o = JSON.parse(txt); } catch { toast("Couldn't read the plans in that link.", true); return; }
   const n = Object.keys(o?.plans || {}).length;
-  if (!confirm(`Import plans for ${n} day${n === 1 ? '' : 's'}${o?.templates && Object.keys(o.templates).length ? ' and your templates' : ''} from the scanned link? Days you changed more recently on this device are kept.`)) return;
+  if (!confirm(`Import plans for ${n} day${n === 1 ? '' : 's'}${o?.templates && Object.keys(o.templates).length ? ', your templates' : ''}${o?.counters ? ' and counters' : ''} from the scanned link? Days you changed more recently on this device are kept.`)) return;
   try { importText(txt); setView('plan'); } catch (err) { toast(err.message, true); }
 }
 window.addEventListener('hashchange', importFromHash);
@@ -2178,6 +2216,343 @@ function openPlanFile(){
 }
 // Local re-draw only: moves the "now" line, updates block states and the Timer view's plan card.
 setInterval(() => { updatePlanNow(); if (view === 'plan' && !plan.drag && !document.querySelector('dialog[open]')) renderPlan(); }, 30000);
+
+// ---------- counters: how many times you did something (gym visits, reading sessions...) ----------
+// Settings sync with plans. Counting uses a local copy of 12 months of entries: about 3 requests once per device,
+// then kept current by the normal sync (which reaches back over any gap), so 0 extra requests day to day.
+let counters = store.get(K.counters, null);   // {at, list:[{id, name, targets:[{p,t,g}], mode:'days'|'sessions', min, goal:{kind:'min'|'max', n, per:'week'|'month'}|null, base:{n, through}|null, pin}]}
+let counts = store.get(K.counts, null);       // {ws, a, b, full, list:[[startMin, endMin, projectId, taskId]], names:{taskId: name}}
+let countRange = store.get(K.countRange, 'year'), countsLoading = false, countsFailed = false;
+const MERGE_GAP = 30;   // minutes: entries closer than this form one session
+const CRANGES = [['week', '7 days', 'Last 7 days'], ['month', 'Month', 'Last month'], ['3m', '3M', 'Last 3 months'], ['6m', '6M', 'Last 6 months'],
+  ['9m', '9M', 'Last 9 months'], ['12m', '12M', 'Last 12 months'], ['year', 'Year', 'This year']];
+const COUNTER_SEEDS = [
+  { name:'Gym', find:[['Body', 'Fitness']], mode:'days', min:0, goal:{ kind:'min', n:3, per:'week' }, base:{ n:62, through:'2026-10-20' }, pin:true },
+  { name:'Walks', find:[['Body', 'Walk']], mode:'days', min:15, goal:{ kind:'min', n:5, per:'week' }, pin:true },
+  { name:'Breathing', find:[['Body', 'Breathing exercise']], mode:'days', min:0, goal:null },
+  { name:'Good sleep', find:[['Body', 'Sleep']], mode:'days', min:420, goal:{ kind:'min', n:5, per:'week' }, pin:true },
+  { name:'Morning routine', find:[['Body', 'Morning routine']], mode:'days', min:0, goal:null },
+  { name:'Reading', find:[['Wisdom', 'Book'], ['Self', 'Misc reading']], mode:'sessions', min:20, goal:null, pin:true },
+  { name:'Learning', find:[['Wisdom', 'Claude explore']], mode:'sessions', min:0, goal:{ kind:'min', n:2, per:'week' } },
+  { name:'Football', find:[['Self', 'Football']], mode:'sessions', min:0, goal:null },
+  { name:'Gaming', find:[['Self', 'Xbox']], mode:'sessions', min:0, goal:{ kind:'max', n:4, per:'week' }, pin:true },
+  { name:'Meal prep', find:[['Family', 'Meal prep']], mode:'days', min:0, goal:{ kind:'min', n:2, per:'week' } },
+  { name:'Family time', find:[['Family', null]], mode:'days', min:60, goal:null },
+  { name:'Deep work', find:[['Wealth', 'Pro work', true]], mode:'sessions', min:90, goal:{ kind:'min', n:5, per:'week' }, pin:true },
+];
+// Seeds are matched to your Clockify names once; anything not found stays empty until you pick tasks in Edit.
+function seedCounters(){
+  if (counters || !cache?.projects.length) return;
+  const lc = v => (v || '').trim().toLowerCase();
+  const findRef = ([pn, tn, group]) => {
+    const p = cache.projects.find(x => lc(x.name) === lc(pn));
+    if (group) return p && p.tasks.some(t => lc(t.name) === lc(tn) || lc(groupOf(t.name)) === lc(tn)) ? { p:p.id, g:tn } : null;
+    if (!tn) return p ? { p:p.id } : null;
+    for (const q of p ? [p, ...cache.projects] : cache.projects) { const t = q.tasks.find(x => lc(x.name) === lc(tn)); if (t) return { p:q.id, t:t.id }; }
+    return null;
+  };
+  counters = { at: Date.now(), list: COUNTER_SEEDS.map(({ find, ...c }) => ({ id: newId(), ...c, base: c.base || null, pin: !!c.pin, targets: find.map(findRef).filter(Boolean) })) };
+  store.set(K.counters, counters);
+}
+function cleanCounters(o){
+  if (!o || typeof o !== 'object' || !Array.isArray(o.list)) return null;
+  const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null, int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+  const list = o.list.slice(0, 40).filter(c => c && str(c.name, 60)).map(c => ({
+    id: typeof c.id === 'string' && /^[\w-]{1,32}$/.test(c.id) ? c.id : newId(), name: str(c.name, 60),
+    targets: (Array.isArray(c.targets) ? c.targets : []).slice(0, 12).filter(t => t && str(t.p, 64)).map(t => ({ p: str(t.p, 64), t: str(t.t, 64), g: str(t.g, 120) })),
+    mode: c.mode === 'sessions' ? 'sessions' : 'days', min: int(c.min, 0, 1440),
+    goal: c.goal && Number(c.goal.n) > 0 ? { kind: c.goal.kind === 'max' ? 'max' : 'min', n: int(c.goal.n, 1, 999), per: c.goal.per === 'month' ? 'month' : 'week' } : null,
+    base: c.base && /^\d{4}-\d{2}-\d{2}$/.test(c.base.through) ? { n: int(c.base.n, 0, 99999), through: c.base.through } : null,
+    pin: !!c.pin }));
+  return { at: Number(o.at) || 0, list };
+}
+function saveCounters(){ counters.at = Date.now(); store.set(K.counters, counters); }
+
+// ----- local entry copy -----
+const saveCounts = () => store.set(K.counts, counts);
+function countIngest(a, b, segs){
+  if (!cache) return;
+  if (!counts || counts.ws !== cache.ws) counts = { ws: cache.ws, a, b, full:false, list:[], names:{} };
+  else if (a > counts.b + 60000 || b < counts.a - 60000) return;   // not next to what we have: skip rather than leave a hole
+  const am = a / 60000, bm = b / 60000;
+  counts.list = counts.list.filter(x => x[0] < am || x[0] >= bm);   // this range was just re-read; drop deleted/edited entries
+  const have = new Set(counts.list.map(x => `${x[0]}|${x[2]}|${x[3]}`));
+  for (const g of segs) {
+    const x = [Math.floor(g.s / 60000), Math.ceil(g.e / 60000), g.keys[1], g.keys[2]], k = `${x[0]}|${x[2]}|${x[3]}`;
+    if (!have.has(k)) { counts.list.push(x); have.add(k); }
+    if (g.keys[2] !== 'none') counts.names[g.keys[2]] = g.names[2];
+  }
+  counts.list.sort((x, y) => x[0] - y[0]);
+  counts.a = Math.min(counts.a, a); counts.b = Math.max(counts.b, b);
+  saveCounts();
+}
+function countAdd(g){
+  if (!counts || counts.ws !== cache?.ws || g.s < counts.a) return;
+  const x = [Math.floor(g.s / 60000), Math.ceil(g.e / 60000), g.keys[1], g.keys[2]];
+  if (counts.list.some(y => y[0] === x[0] && y[2] === x[2] && y[3] === x[3])) return;
+  counts.list.push(x); counts.list.sort((p, q) => p[0] - q[0]);
+  if (g.keys[2] !== 'none') counts.names[g.keys[2]] = g.names[2];
+  saveCounts();
+}
+// When the app was away for more than the sync window, the sync request reaches back to where the copy ends.
+function countsGapFrom(p){
+  if (!counts?.full || counts.ws !== cache.ws) return null;
+  const base = +addDays(p.pa, -1);
+  return counts.b < base && counts.b > base - 60 * DAY ? counts.b - 60000 : null;
+}
+const monthsBack = (d, n) => { const x = new Date(d), day = x.getDate(); x.setDate(1); x.setMonth(x.getMonth() - n);
+  x.setDate(Math.min(day, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return x; };
+async function ensureCounts(force){
+  if (!cache || !apiKey || countsLoading || Date.now() < backoffUntil) return;
+  if (!force && ((counts?.full && counts.ws === cache.ws) || countsFailed)) return;
+  countsLoading = true; countsFailed = false;
+  const from = startOfDay(addDays(monthsBack(new Date(), 12), -7)), to = new Date();
+  if (view === 'summary' && sum.kind === 'counts') renderCounts();
+  try {
+    const nowMs = Date.now(), segs = [];
+    for (const e of await fetchEntries(from, to)) { if (!e.timeInterval?.start || !e.timeInterval.end) continue; const g = entryToSeg(e, nowMs); if (g.e > g.s) segs.push(g); }
+    if (force) counts = null;
+    countIngest(+from, +to, segs); counts.full = true; saveCounts();
+    toast(force ? 'Counters recounted' : 'Counters are ready');
+  } catch (err) { countsFailed = true; handleError(err); }
+  finally { countsLoading = false; renderList(); if (view === 'summary' && sum.kind === 'counts') renderCounts(); }
+}
+
+// ----- counting -----
+function counterEvents(c){
+  const tn = t => counts.names[t] || [...projectsById.values()].flatMap(p => p.tasks).find(x => x.id === t)?.name || '';
+  const hit = (p, t, name) => c.targets.some(tg => matchKind(tg, { p, t, tn: name }) === 'exact');
+  const xs = counts.list.filter(x => hit(x[2], x[3], tn(x[3]))).map(x => ({ s: x[0] * 60000, e: x[1] * 60000 }));
+  if (running && hit(running.projectId || 'none', running.taskId || 'none', running.tName) && !xs.some(x => Math.abs(x.s - running.start) < 60000))
+    xs.push({ s: running.start, e: Date.now() });
+  xs.sort((x, y) => x.s - y.s);
+  const min = c.min * 60000, out = [];
+  if (c.mode === 'days') {
+    const per = new Map();
+    for (const x of xs) { const d = ymd(new Date(x.s)); per.set(d, (per.get(d) || 0) + x.e - x.s); }
+    for (const [d, ms] of per) if (ms >= Math.max(min, 1)) out.push(d);
+  } else {
+    let cur = null;
+    const close = () => { if (cur && cur.e - cur.s >= Math.max(min, 1)) out.push(ymd(new Date(cur.s))); };
+    for (const x of xs) { if (cur && x.s - cur.e <= MERGE_GAP * 60000) cur.e = Math.max(cur.e, x.e); else { close(); cur = { ...x }; } }
+    close();
+  }
+  return out.sort();   // one day string per counted instance
+}
+function countRangeDays(k){
+  const t = startOfDay(new Date());
+  const a = k === 'week' ? addDays(t, -6) : k === 'year' ? new Date(t.getFullYear(), 0, 1) : addDays(monthsBack(t, { month:1, '3m':3, '6m':6, '9m':9, '12m':12 }[k]), 1);
+  return { A: ymd(a), B: ymd(t) };
+}
+const coveredFrom = () => { const d = new Date(counts.a); return ymd(+d === +startOfDay(d) ? d : addDays(startOfDay(d), 1)); };
+function countIn(c, ev, k){
+  const { A, B } = countRangeDays(k), cov = coveredFrom();
+  const base = c.base && c.base.through.slice(0, 4) === B.slice(0, 4) && c.base.through >= A ? c.base : null;
+  if (k === 'year' && base) {
+    const n = base.n + ev.filter(d => d > base.through && d <= B).length;
+    return { n, partial: cov > ymd(addDays(parseYmd(base.through), 1)), base };
+  }
+  return { n: ev.filter(d => d >= A && d <= B).length, partial: A < cov };
+}
+const weekOf = d => { const x = parseYmd(d), ws = WD[cache?.weekStart] ?? 1; return ymd(addDays(x, -((x.getDay() - ws + 7) % 7))); };
+const bucketOf = (per, d) => per === 'month' ? d.slice(0, 7) : weekOf(d);
+const nextBucket = (per, b) => per === 'month' ? ymd(addMonths(parseYmd(b + '-01'), 1)).slice(0, 7) : ymd(addDays(parseYmd(b), 7));
+// Streak: with a goal, consecutive weeks (or months) meeting it; without one, consecutive days.
+function streakOf(c, ev){
+  const today = ymd(new Date()), cov = coveredFrom();
+  if (!c.goal) {
+    const days = new Set(ev); let cur = 0, best = 0, run = 0, prev = null;
+    for (let d = days.has(today) ? parseYmd(today) : addDays(parseYmd(today), -1); days.has(ymd(d)); d = addDays(d, -1)) cur++;
+    for (const d of [...days].sort()) { run = prev && ymd(addDays(parseYmd(prev), 1)) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; }
+    return { cur, best, unit:'day' };
+  }
+  const { kind, n, per } = c.goal, ok = v => kind === 'max' ? v <= n : v >= n;
+  const by = new Map(); for (const d of ev) { const b = bucketOf(per, d); by.set(b, (by.get(b) || 0) + 1); }
+  const now = bucketOf(per, today), seq = [];
+  let b = bucketOf(per, cov); if (per === 'month' ? cov.slice(8) !== '01' : b !== cov) b = nextBucket(per, b);   // skip a partly covered first bucket
+  for (; b <= now; b = nextBucket(per, b)) seq.push({ b, v: by.get(b) || 0 });
+  let cur = 0, best = 0, run = 0;
+  for (let i = seq.length - 1; i >= 0; i--) {
+    if (ok(seq[i].v)) cur++;
+    else if (i === seq.length - 1 && kind === 'min') continue;   // this week isn't over yet
+    else break;
+  }
+  for (const [i, x] of seq.entries()) { if (ok(x.v)) { run++; best = Math.max(best, run); } else if (!(i === seq.length - 1 && kind === 'min')) run = 0; }
+  return { cur, best, unit: per, thisPeriod: by.get(now) || 0 };
+}
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+function ruleText(c){
+  const m = c.min ? dur(c.min * 60000) : '';
+  const parts = [c.mode === 'days' ? (m ? `Days with ${m}+` : 'Days') : (m ? `Sessions of ${m}+` : 'Sessions')];
+  if (c.goal) parts.push(c.goal.kind === 'max' ? `At most ${c.goal.n} a ${c.goal.per}` : `Goal ${c.goal.n}+ a ${c.goal.per}`);
+  return parts.join(' · ');
+}
+function counterColor(c, i){ return (c.targets[0] && projectsById.get(c.targets[0].p)?.color) || PALETTE[i % PALETTE.length]; }
+function goalText(c, st){
+  if (!c.goal) return st.cur ? `Streak ${plural(st.cur, 'day')}` : '';
+  const g = c.goal, v = st.thisPeriod;
+  return `This ${g.per}: ${v} ${g.kind === 'max' ? `of max ${g.n}` : `of ${g.n}`}`;
+}
+const tileGoal = (c, st) => c.goal ? `${c.goal.per === 'month' ? 'Month' : 'Week'} ${st.thisPeriod}/${c.goal.kind === 'max' ? 'max ' : ''}${c.goal.n}` : st.cur ? `${st.cur}-day streak` : '';
+
+// ----- Timer view tiles -----
+function countersSection(list){
+  if (!cache) return;
+  seedCounters();
+  const pins = (counters?.list || []).filter(c => c.pin);
+  if (!pins.length) return;
+  list.append(el('div', { class:'sec-head' }, el('h2', { text:'Counters' }),
+    el('button', { class:'link', type:'button', text:'All counters', onclick: openCounts })));
+  if (!counts?.full || counts.ws !== cache.ws) {
+    setTimeout(() => ensureCounts(false), 0);
+    list.append(el('p', { class:'hint', text: countsFailed ? "Couldn't load counter data. Open All counters to try again."
+      : 'Setting up counters: downloading 12 months of entries once on this device (about 3 requests).' }));
+    return;
+  }
+  list.append(el('div', { class:'tiles' }, pins.map(c => {
+    const i = counters.list.indexOf(c), ev = counterEvents(c), y = countIn(c, ev, 'year'), st = streakOf(c, ev);
+    const met = c.goal && (c.goal.kind === 'max' ? st.thisPeriod <= c.goal.n : st.thisPeriod >= c.goal.n);
+    const t = el('button', { class:'tile ctile', type:'button', 'aria-label': `${c.name}: ${y.n} this year. ${goalText(c, st)}. Open counters`, onclick: openCounts },
+      el('span', { class:'tile-name', text:c.name }),
+      el('span', { class:'cnum' }, el('b', { text: String(y.n) }), el('span', { text:' this year' })),
+      el('span', { class:`tile-sub${met ? ' met' : ''}`, text: tileGoal(c, st) }),
+      c.goal && st.cur ? el('span', { class:'tile-sub', text:`${st.cur}-${st.unit} streak` }) : null);
+    t.style.setProperty('--pc', counterColor(c, i));
+    return t;
+  })));
+}
+function openCounts(){ sum.kind = 'counts'; store.set(K.sumKind, 'counts'); setView('summary'); }
+
+// ----- Summary > Counts -----
+function renderCounts(){
+  const box = $('summary');
+  seedCounters();
+  if (!counters) { box.replaceChildren(el('div', { class:'empty', text:'Load your projects first.' })); return; }
+  const out = [];
+  const seg = el('div', { class:'seg crange', role:'radiogroup', 'aria-label':'Count range' }, CRANGES.map(([k, short, long]) =>
+    el('button', { type:'button', role:'radio', 'aria-checked': String(k === countRange), 'aria-label': long, text: short,
+      onclick: () => { countRange = k; store.set(K.countRange, k); renderCounts(); } })));
+  out.push(seg);
+  const ready = counts?.full && counts.ws === cache.ws;
+  if (!ready) {
+    if (!countsLoading && !countsFailed) setTimeout(() => ensureCounts(false), 0);
+    out.push(el('div', { class:'empty' }, el('div', { text: countsLoading ? 'Downloading 12 months of entries (about 3 requests, once per device)…'
+        : countsFailed ? "Couldn't download your entries." : 'Getting ready…' }),
+      countsFailed ? el('button', { class:'btn', type:'button', text:'Try again', style:'margin-top:12px', onclick: () => ensureCounts(true) }) : null));
+    box.replaceChildren(...out); return;
+  }
+  const label = CRANGES.find(r => r[0] === countRange)[2], { A, B } = countRangeDays(countRange);
+  out.push(el('div', { class:'sum-sub', style:'margin-top:10px', text: `${label}: ${fmtD(parseYmd(A), { month:'short', day:'numeric', year:'numeric' })} to today` }));
+  counters.list.forEach((c, i) => out.push(counterCard(c, i, A, B)));
+  out.push(el('div', { class:'btns', style:'margin-top:14px;justify-content:center' },
+    el('button', { class:'btn primary', type:'button', text:'+ Add counter', onclick: () => counterDialog(null) })));
+  out.push(el('p', { class:'hint', style:'margin-top:14px;text-align:center', text:
+    `Counted from your Clockify entries since ${fmtD(new Date(counts.a), { month:'short', day:'numeric', year:'numeric' })}, kept up to date by normal syncing. "Partial" means the range starts before that. Sessions less than ${MERGE_GAP} minutes apart count as one.` }));
+  out.push(el('div', { class:'btns', style:'justify-content:center' },
+    el('button', { class:'btn', type:'button', text: countsLoading ? 'Recounting…' : 'Recount from Clockify (about 3 requests)', disabled: countsLoading ? '' : null,
+      onclick: () => { if (confirm('Download 12 months of entries again? Use this after editing old entries on the Clockify website. About 3 requests.')) ensureCounts(true); } })));
+  box.replaceChildren(...out);
+}
+function counterCard(c, i, A, B){
+  const ev = counterEvents(c), r = countIn(c, ev, countRange), st = streakOf(c, ev), col = counterColor(c, i);
+  const dot = el('span', { class:'dot' }); dot.style.background = col;
+  const what = c.targets.map(t => targetOf(t).name).join(', ') || 'No tasks chosen yet. Tap Edit.';
+  const notes = [];
+  if (r.base) notes.push(`Includes ${r.base.n} counted before ${fmtD(addDays(parseYmd(r.base.through), 1))}`);
+  if (c.goal) notes.push(goalText(c, st));
+  if (st.cur || st.best) notes.push(`Streak ${plural(st.cur, st.unit)}${st.best > st.cur ? `, best ${st.best}` : ''}`);
+  return el('div', { class:'card ccard' },
+    el('div', { class:'ccard-top' }, dot,
+      el('div', { class:'label' }, el('div', { class:'title', text:c.name }), el('div', { class:'meta', text:`${what} · ${ruleText(c)}` })),
+      el('div', { class:'ccount' }, el('b', { text:String(r.n) }), r.partial ? el('span', { class:'partial', text:'partial' }) : null),
+      el('button', { class:'link', type:'button', text:'Edit', 'aria-label':`Edit ${c.name}`, onclick: () => counterDialog(c) })),
+    countBars(c, ev, A, B, col),
+    notes.length ? el('div', { class:'sum-sub cnotes', text: notes.join(' · ') }) : null);
+}
+// Bars per day (7 days), per week (up to 3 months) or per month, with the goal line when it matches the bars.
+function countBars(c, ev, A, B, col){
+  const unit = countRange === 'week' ? 'day' : (countRange === 'month' || countRange === '3m') ? 'week' : 'month';
+  const key = d => unit === 'day' ? d : unit === 'week' ? weekOf(d) : d.slice(0, 7);
+  const buckets = [];
+  for (let d = parseYmd(A); ymd(d) <= B; d = addDays(d, 1)) { const k = key(ymd(d)); if (buckets[buckets.length - 1]?.k !== k) buckets.push({ k, from: ymd(d), v:0 }); }
+  for (const d of ev) if (d >= A && d <= B) { const b = buckets.find(x => x.k === key(d)); if (b) b.v++; }
+  const goal = c.goal && c.goal.per === unit ? c.goal.n : null;
+  const max = Math.max(1, goal || 0, ...buckets.map(b => b.v)), n = buckets.length, W = n * 10, H = 40;
+  const chart = svg('svg', { class:'cbars', viewBox:`0 0 ${W} ${H}`, preserveAspectRatio:'none', role:'img', 'aria-label':`${c.name} per ${unit}` });
+  buckets.forEach((b, i) => {
+    const h = b.v / max * (H - 2);
+    chart.append(svg('rect', { x: i * 10 + 1.5, y: H - Math.max(h, b.v ? 1.5 : 0.6), width:7, height: Math.max(h, b.v ? 1.5 : 0.6), rx:1, style:`fill:${b.v ? col : 'var(--line)'}` },
+      svg('title', { text:`${unit === 'month' ? fmtD(parseYmd(b.from), { month:'short', year:'numeric' }) : unit === 'week' ? 'Week of ' + fmtD(parseYmd(b.k)) : fmtD(parseYmd(b.k), { weekday:'short', month:'short', day:'numeric' })}: ${b.v}` })));
+  });
+  if (goal) chart.append(svg('line', { x1:0, x2:W, y1: H - goal / max * (H - 2), y2: H - goal / max * (H - 2), style:'stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3;opacity:.5', 'vector-effect':'non-scaling-stroke' }));
+  const lbl = d => fmtD(parseYmd(d), unit === 'month' ? { month:'short' } : { month:'short', day:'numeric' });
+  return el('div', { class:'cbar-wrap' }, chart,
+    el('div', { class:'cbar-axis' }, el('span', { text: lbl(buckets[0].from) }), el('span', { text: unit === 'day' ? 'per day' : `per ${unit}${goal ? ' · dashed line = goal' : ''}` }), el('span', { text:'Today' })));
+}
+
+// ----- add / edit counter -----
+function counterDialog(c){
+  const ed = c ? JSON.parse(JSON.stringify(c)) : { id: newId(), name:'', targets:[], mode:'days', min:0, goal:null, base:null, pin:true };
+  const name = el('input', { type:'text', id:'cName', maxlength:'60', autocomplete:'off', value: ed.name });
+  const chosen = el('div', { class:'ctargets' }), q = el('input', { class:'search', type:'search', placeholder:'Add a task, group or project', autocomplete:'off', spellcheck:'false', 'aria-label':'Add a task, group or project' });
+  const pick = el('div', { class:'pick', role:'listbox', 'aria-label':'Choices' });
+  const drawChosen = () => chosen.replaceChildren(...(ed.targets.length ? ed.targets.map((t, i) => {
+    const tg = targetOf(t), dot = el('span', { class:'dot' }); dot.style.background = tg.color;
+    return el('span', { class:'chip' }, dot, el('span', { text: tg.name }),
+      el('button', { type:'button', class:'chip-x', 'aria-label':`Remove ${tg.name}`, text:'×', onclick: () => { ed.targets.splice(i, 1); drawChosen(); } }));
+  }) : [el('span', { class:'muted', text:'Nothing chosen yet.' })]));
+  const drawPick = () => {
+    const items = q.value.trim() ? planCandidates(q.value.trim()) : [];
+    pick.classList.toggle('hidden', !items.length);
+    pick.replaceChildren(...items.map(it => { const dot = el('span', { class:'dot' }); if (it.color) dot.style.background = it.color;
+      return el('button', { class:'row', type:'button', onclick: () => { if (!ed.targets.some(t => sameRef(t, it.ref))) ed.targets.push(it.ref); q.value = ''; drawPick(); drawChosen(); q.focus(); } },
+        dot, el('span', { class:'label' }, el('div', { class:'title', text:it.name }), el('div', { class:'meta', text:it.sub }))); }));
+  };
+  q.addEventListener('input', drawPick);
+  const sel = (id, opts, val) => { const s = el('select', { id }); for (const [v, t] of opts) s.append(el('option', { value:v, text:t })); s.value = val; return s; };
+  const mode = sel('cMode', [['days', 'Once per day'], ['sessions', 'Each session']], ed.mode);
+  const min = el('input', { type:'number', id:'cMin', min:'0', max:'1440', step:'5', value: String(ed.min || 0) });
+  const gk = sel('cGoalKind', [['', 'No goal'], ['min', 'At least'], ['max', 'At most']], ed.goal?.kind || '');
+  const gn = el('input', { type:'number', id:'cGoalN', min:'1', max:'999', value: String(ed.goal?.n || 3), 'aria-label':'Goal number' });
+  const gp = sel('cGoalPer', [['week', 'per week'], ['month', 'per month']], ed.goal?.per || 'week');
+  const goalRow = el('div', { class:'times-row' }, el('div', { class:'field' }, el('label', { for:'cGoalKind', text:'Goal' }), gk),
+    el('div', { class:'field' }, el('label', { for:'cGoalN', text:'How many' }), gn), el('div', { class:'field' }, el('label', { for:'cGoalPer', text:'Per' }), gp));
+  const syncGoal = () => { gn.disabled = gp.disabled = !gk.value; };
+  gk.addEventListener('change', syncGoal);
+  const bn = el('input', { type:'number', id:'cBaseN', min:'0', max:'99999', value: ed.base ? String(ed.base.n) : '', placeholder:'None' });
+  const bd = el('input', { type:'date', id:'cBaseD', value: ed.base?.through || ymd(new Date()), max: ymd(new Date()) });
+  const pin = el('input', { type:'checkbox' }); pin.checked = !!ed.pin;
+  const save = () => {
+    ed.name = name.value.trim();
+    if (!ed.name) { toast('Give the counter a name', true); name.focus(); return; }
+    ed.mode = mode.value; ed.min = Math.max(0, Math.min(1440, Math.round(+min.value || 0)));
+    ed.goal = gk.value ? { kind: gk.value, n: Math.max(1, Math.round(+gn.value || 1)), per: gp.value } : null;
+    ed.base = bn.value !== '' && bd.value ? { n: Math.max(0, Math.round(+bn.value)), through: bd.value } : null;
+    ed.pin = pin.checked;
+    const i = counters.list.findIndex(x => x.id === ed.id);
+    if (i >= 0) counters.list[i] = ed; else counters.list.push(ed);
+    saveCounters(); dlg.close(); renderCounts(); renderList();
+  };
+  const dlg = openDialog(c ? `Edit ${c.name}` : 'New counter',
+    el('div', { class:'field', style:'margin-top:0' }, el('label', { for:'cName', text:'Name' }), name),
+    el('div', { class:'field' }, el('span', { text:'Counts time on' }), chosen, q, pick),
+    el('div', { class:'times-row' },
+      el('div', { class:'field' }, el('label', { for:'cMode', text:'Count' }), mode),
+      el('div', { class:'field' }, el('label', { for:'cMin', text:'Min. minutes' }), min)),
+    goalRow,
+    el('div', { class:'times-row' },
+      el('div', { class:'field' }, el('label', { for:'cBaseN', text:'Count so far this year' }), bn),
+      el('div', { class:'field' }, el('label', { for:'cBaseD', text:'As of (including)' }), bd)),
+    el('p', { class:'hint', style:'margin:0', text:'Starting count is optional: use it when earlier times were not tracked this way. Later instances are added to it.' }),
+    el('label', { class:'check' }, pin, 'Show on the Timer tab'),
+    el('div', { class:'btns', style:'margin-top:12px' },
+      el('button', { class:'btn primary', type:'button', text:'Save', onclick: save }),
+      el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() }),
+      c ? el('button', { class:'btn danger', type:'button', text:'Delete', onclick: () => {
+        if (!confirm(`Delete the ${c.name} counter? Your Clockify entries are not affected.`)) return;
+        counters.list = counters.list.filter(x => x.id !== c.id); saveCounters(); dlg.close(); renderCounts(); renderList(); } }) : null));
+  drawChosen(); drawPick(); syncGoal(); if (!c) name.focus();
+}
 
 // ---------- boot ----------
 indexCache(); renderAll();
