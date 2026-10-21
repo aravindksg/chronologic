@@ -295,6 +295,29 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .qr svg{display:block;width:100%;height:auto}
 .sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
 /* Counters */
+.ccard.tap{cursor:pointer}
+.ccard.tap:hover{border-color:color-mix(in srgb, var(--go) 45%, var(--line))}
+.cpage-head{display:flex;align-items:center;gap:10px;margin-top:14px}
+.cpage-head .label{flex:1;min-width:0}
+.cpage-name{display:flex;align-items:center;gap:8px;font-weight:600;font-size:18px}
+.hm-row{display:flex;align-items:flex-start}
+.hm-days{flex:none}
+.hm-scroll{overflow-x:auto;padding-bottom:4px;min-width:0;flex:1}
+.hm{display:block}
+.hm text{font:10px var(--text);fill:var(--muted)}
+.hm-c{cursor:pointer;stroke:color-mix(in srgb, var(--ink) 8%, transparent);stroke-width:1}
+.hm-c.under{stroke:var(--muted);stroke-dasharray:2 1.5}
+.hm-c.none{opacity:.35}
+.hm-c.today{stroke:var(--ink);stroke-width:1.2}
+.hm-c.sel{stroke:var(--go);stroke-width:2}
+.hm-goal{fill:var(--line)}
+.hm-goal.met{fill:var(--go)}
+.hm-goal.open{fill:none;stroke:var(--muted);stroke-dasharray:2 1.5}
+.hm-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px;font-size:12px;color:var(--muted);margin-top:8px}
+.hm-key{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid color-mix(in srgb, var(--ink) 8%, transparent);vertical-align:-1px}
+.hm-key.under{border:1px dashed var(--muted);background:var(--bg)}
+.hm-key.goal{background:var(--go);border-color:transparent;height:6px}
+.hm-note{margin-left:10px;display:inline-flex;align-items:center;gap:4px}
 .ctile{min-height:96px}
 .cnum{display:flex;align-items:baseline;gap:4px;font-size:12px;color:var(--muted)}
 .cnum b{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:24px;font-weight:600;color:var(--ink);line-height:1.15}
@@ -2319,13 +2342,16 @@ async function ensureCounts(force){
 }
 
 // ----- counting -----
-function counterEvents(c){
+// Matching entries for a counter (the running timer included), sorted by start.
+function counterMatches(c){
   const tn = t => counts.names[t] || [...projectsById.values()].flatMap(p => p.tasks).find(x => x.id === t)?.name || '';
   const hit = (p, t, name) => c.targets.some(tg => matchKind(tg, { p, t, tn: name }) === 'exact');
   const xs = counts.list.filter(x => hit(x[2], x[3], tn(x[3]))).map(x => ({ s: x[0] * 60000, e: x[1] * 60000 }));
   if (running && hit(running.projectId || 'none', running.taskId || 'none', running.tName) && !xs.some(x => Math.abs(x.s - running.start) < 60000))
     xs.push({ s: running.start, e: Date.now() });
-  xs.sort((x, y) => x.s - y.s);
+  return xs.sort((x, y) => x.s - y.s);
+}
+function counterEvents(c, xs = counterMatches(c)){
   const min = c.min * 60000, out = [];
   if (c.mode === 'days') {
     const per = new Map();
@@ -2339,6 +2365,7 @@ function counterEvents(c){
   }
   return out.sort();   // one day string per counted instance
 }
+function counterDayMs(xs){ const m = new Map(); for (const x of xs) { const d = ymd(new Date(x.s)); m.set(d, (m.get(d) || 0) + x.e - x.s); } return m; }
 function countRangeDays(k){
   const t = startOfDay(new Date());
   const a = k === 'week' ? addDays(t, -6) : k === 'year' ? new Date(t.getFullYear(), 0, 1) : addDays(monthsBack(t, { month:1, '3m':3, '6m':6, '9m':9, '12m':12 }[k]), 1);
@@ -2412,7 +2439,7 @@ function countersSection(list){
   list.append(el('div', { class:'tiles' }, pins.map(c => {
     const i = counters.list.indexOf(c), ev = counterEvents(c), y = countIn(c, ev, 'year'), st = streakOf(c, ev);
     const met = c.goal && (c.goal.kind === 'max' ? st.thisPeriod <= c.goal.n : st.thisPeriod >= c.goal.n);
-    const t = el('button', { class:'tile ctile', type:'button', 'aria-label': `${c.name}: ${y.n} this year. ${goalText(c, st)}. Open counters`, onclick: openCounts },
+    const t = el('button', { class:'tile ctile', type:'button', 'aria-label': `${c.name}: ${y.n} this year. ${goalText(c, st)}. Open`, onclick: () => openCounts(c.id) },
       el('span', { class:'tile-name', text:c.name }),
       el('span', { class:'cnum' }, el('b', { text: String(y.n) }), el('span', { text:' this year' })),
       el('span', { class:`tile-sub${met ? ' met' : ''}`, text: tileGoal(c, st) }),
@@ -2421,7 +2448,8 @@ function countersSection(list){
     return t;
   })));
 }
-function openCounts(){ sum.kind = 'counts'; store.set(K.sumKind, 'counts'); setView('summary'); }
+let countFocus = null;   // id of the counter whose own page is open
+function openCounts(id){ countFocus = typeof id === 'string' ? id : null; sum.kind = 'counts'; store.set(K.sumKind, 'counts'); setView('summary'); }
 
 // ----- Summary > Counts -----
 function renderCounts(){
@@ -2441,6 +2469,9 @@ function renderCounts(){
       countsFailed ? el('button', { class:'btn', type:'button', text:'Try again', style:'margin-top:12px', onclick: () => ensureCounts(true) }) : null));
     box.replaceChildren(...out); return;
   }
+  const fc = countFocus && counters.list.find(x => x.id === countFocus);
+  if (fc) { renderCounterPage(fc, counters.list.indexOf(fc)); return; }
+  countFocus = null;
   const label = CRANGES.find(r => r[0] === countRange)[2], { A, B } = countRangeDays(countRange);
   out.push(el('div', { class:'sum-sub', style:'margin-top:10px', text: `${label}: ${fmtD(parseYmd(A), { month:'short', day:'numeric', year:'numeric' })} to today` }));
   counters.list.forEach((c, i) => out.push(counterCard(c, i, A, B)));
@@ -2461,11 +2492,13 @@ function counterCard(c, i, A, B){
   if (r.base) notes.push(`Includes ${r.base.n} counted before ${fmtD(addDays(parseYmd(r.base.through), 1))}`);
   if (c.goal) notes.push(goalText(c, st));
   if (st.cur || st.best) notes.push(`Streak ${plural(st.cur, st.unit)}${st.best > st.cur ? `, best ${st.best}` : ''}`);
-  return el('div', { class:'card ccard' },
+  const open = () => { countFocus = c.id; renderCounts(); window.scrollTo({ top:0 }); };
+  return el('div', { class:'card ccard tap', role:'button', tabindex:'0', 'aria-label':`${c.name}: ${r.n}. Open its day grid`,
+      onclick: open, onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open(); } } },
     el('div', { class:'ccard-top' }, dot,
       el('div', { class:'label' }, el('div', { class:'title', text:c.name }), el('div', { class:'meta', text:`${what} · ${ruleText(c)}` })),
       el('div', { class:'ccount' }, el('b', { text:String(r.n) }), r.partial ? el('span', { class:'partial', text:'partial' }) : null),
-      el('button', { class:'link', type:'button', text:'Edit', 'aria-label':`Edit ${c.name}`, onclick: () => counterDialog(c) })),
+      el('button', { class:'link', type:'button', text:'Edit', 'aria-label':`Edit ${c.name}`, onclick: e => { e.stopPropagation(); counterDialog(c); } })),
     countBars(c, ev, A, B, col),
     notes.length ? el('div', { class:'sum-sub cnotes', text: notes.join(' · ') }) : null);
 }
@@ -2488,6 +2521,82 @@ function countBars(c, ev, A, B, col){
   const lbl = d => fmtD(parseYmd(d), unit === 'month' ? { month:'short' } : { month:'short', day:'numeric' });
   return el('div', { class:'cbar-wrap' }, chart,
     el('div', { class:'cbar-axis' }, el('span', { text: lbl(buckets[0].from) }), el('span', { text: unit === 'day' ? 'per day' : `per ${unit}${goal ? ' · dashed line = goal' : ''}` }), el('span', { text:'Today' })));
+}
+
+// ----- one counter's page: GitHub-style day grid shaded by time spent -----
+function renderCounterPage(c, i){
+  const box = $('summary'), xs = counterMatches(c), ev = counterEvents(c, xs), dms = counterDayMs(xs);
+  const y = countIn(c, ev, 'year'), st = streakOf(c, ev), col = counterColor(c, i);
+  const dot = el('span', { class:'dot' }); dot.style.background = col;
+  const back = () => { countFocus = null; renderCounts(); };
+  const unit = n => plural(n, st.unit);
+  const head = el('div', { class:'cpage-head' },
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'All counters', text:'‹', onclick: back }),
+    el('div', { class:'label' }, el('div', { class:'cpage-name' }, dot, el('span', { text:c.name })),
+      el('div', { class:'sum-sub', style:'text-align:left', text:`${c.targets.map(t => targetOf(t).name).join(', ') || 'No tasks chosen'} · ${ruleText(c)}` })),
+    el('button', { class:'btn', type:'button', text:'Edit', onclick: () => counterDialog(c) }));
+  const scores = el('div', { class:'scores' },
+    scoreEl('This year', String(y.n), y.base ? `incl. ${y.base.n} before ${fmtD(addDays(parseYmd(y.base.through), 1))}` : y.partial ? 'partial' : ''),
+    scoreEl('Current streak', unit(st.cur), c.goal ? goalText(c, st) : 'days in a row'),
+    scoreEl('Best streak', unit(st.best), `since ${fmtD(parseYmd(coveredFrom()), { month:'short', year:'numeric' })}`));
+  const grid = el('div', { class:'card' }, el('h4', { text:'Every day' }));
+  box.replaceChildren(head, scores, grid);
+  heatmapInto(grid, c, col, ev, dms);
+  const notes = [`Darker means more time that day. Data starts ${fmtD(parseYmd(coveredFrom()), { month:'short', day:'numeric', year:'numeric' })}; earlier days are blank.`];
+  if (y.base) notes.push(`The ${y.base.n} counted before ${fmtD(addDays(parseYmd(y.base.through), 1))} are in the year total but have no dates, so those days look empty.`);
+  box.append(el('p', { class:'hint', style:'margin-top:12px', text: notes.join(' ') }));
+}
+function heatmapInto(card, c, col, ev, dms){
+  const today = ymd(new Date()), cov = coveredFrom(), ws = WD[cache?.weekStart] ?? 1;
+  const weeks = [];
+  for (let w = weekOf(today); weeks.length < 53 && w >= weekOf(cov); w = ymd(addDays(parseYmd(w), -7))) weeks.unshift(w);
+  const counted = new Map(); for (const d of ev) counted.set(d, (counted.get(d) || 0) + 1);
+  // shade levels from the spread of your own counted days (quartiles), like GitHub
+  const vals = [...counted.keys()].map(d => dms.get(d) || 0).filter(v => v > 0).sort((a, b) => a - b);
+  const q = p => vals.length ? vals[Math.min(vals.length - 1, Math.floor(p * vals.length))] : 0;
+  const t1 = q(.25), t2 = q(.5), t3 = q(.75), SH = [0, 32, 55, 78, 100];
+  const level = ms => ms <= t1 ? 1 : ms <= t2 ? 2 : ms <= t3 ? 3 : 4;
+  const shade = lv => `color-mix(in srgb, ${col} ${SH[lv]}%, var(--surface))`;
+  const avail = (card.clientWidth || 340) - 34 - 30, n = weeks.length, fit = Math.floor(avail / n);
+  const step = fit >= 10 ? Math.min(16, fit) : 14, cell = step - 2, L = 0, T = 16;   // too narrow to fit: bigger cells and scroll
+  const goalW = c.goal?.per === 'week';
+  const W = L + n * step, H = T + 7 * step + (goalW ? step + 6 : 0);
+  const detail = el('div', { class:'detail' }, el('span', { class:'muted', text:'Tap a day to see it.' }));
+  const chart = svg('svg', { class:'hm', width:W, height:H, viewBox:`0 0 ${W} ${H}`, role:'img', 'aria-label':`${c.name}: ${counted.size} days over ${n} weeks` });
+  const days = svg('svg', { class:'hm hm-days', width:30, height:H, viewBox:`0 0 30 ${H}`, 'aria-hidden':'true' });   // stays put while the grid scrolls
+  for (const r of [0, 2, 4]) days.append(svg('text', { x:0, y: T + r * step + cell - 1, text: fmtD(addDays(parseYmd(weeks[0]), r), { weekday:'short' }) }));
+  let lastLbl = -9, sel = null;
+  weeks.forEach((w, k) => {
+    const x = L + k * step;
+    for (let r = 0; r < 7; r++) {
+      const day = addDays(parseYmd(w), r), d = ymd(day);
+      if (day.getDate() === 1 && k - lastLbl >= 3) { chart.append(svg('text', { x, y: 11, text: fmtD(day, { month:'short' }) })); lastLbl = k; }
+      if (d > today) continue;
+      const ms = dms.get(d) || 0, cnt = counted.get(d) || 0, before = d < cov;
+      const fill = cnt ? shade(level(ms)) : ms ? shade(1) : 'var(--bg)';
+      const rect = svg('rect', { x, y: T + r * step, width:cell, height:cell, rx:2, class:`hm-c${!cnt && ms ? ' under' : ''}${before ? ' none' : ''}${d === today ? ' today' : ''}`, style:`fill:${fill}`,
+          onclick: () => {
+            sel?.classList.remove('sel'); rect.classList.add('sel'); sel = rect;
+            const what = before ? 'before your data starts' : !ms ? 'nothing' : cnt ? (c.mode === 'sessions' ? `${dur(ms)} · ${plural(cnt, 'session')}` : `${dur(ms)} · counted`) : `${dur(ms)} · not counted (under ${dur(c.min * 60000)})`;
+            detail.replaceChildren(el('strong', { text: fmtD(day, { weekday:'short', month:'short', day:'numeric', year:'numeric' }) }), el('span', { class:'muted', text: `  ${what}` }));
+          } },
+        svg('title', { text: `${fmtD(day, { weekday:'short', month:'short', day:'numeric' })}: ${ms ? dur(ms) : 'nothing'}` }));
+      chart.append(rect);
+    }
+    if (goalW) {   // weekly goal marker under each column
+      const v = ev.filter(d => d >= w && d < ymd(addDays(parseYmd(w), 7))).length, ok = c.goal.kind === 'max' ? v <= c.goal.n : v >= c.goal.n;
+      const current = w === weekOf(today), partial = w < cov;
+      chart.append(svg('rect', { x, y: T + 7 * step + 4, width:cell, height: step - 4, rx:2, class: ok ? 'hm-goal met' : current ? 'hm-goal open' : 'hm-goal',
+        style: partial ? 'opacity:.35' : null }, svg('title', { text:`Week of ${fmtD(parseYmd(w))}: ${v}${ok ? ', goal met' : current ? ', in progress' : ', goal missed'}` })));
+    }
+  });
+  const scroller = el('div', { class:'hm-scroll' }, chart);
+  const sw = lv => { const s = el('i', { class:'hm-key' }); s.style.background = lv ? shade(lv) : 'var(--bg)'; return s; };
+  const legend = el('div', { class:'hm-legend' }, el('span', { text:'Less' }), [0, 1, 2, 3, 4].map(sw), el('span', { text:'More' }),
+    c.min ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' under the minimum') : null,
+    goalW ? el('span', { class:'hm-note' }, el('i', { class:'hm-key goal' }), ` week met goal (${c.goal.kind === 'max' ? 'at most' : 'at least'} ${c.goal.n})`) : null);
+  card.append(el('div', { class:'hm-row' }, days, scroller), legend, detail);
+  scroller.scrollLeft = scroller.scrollWidth;   // open on the current week
 }
 
 // ----- add / edit counter -----
