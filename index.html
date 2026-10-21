@@ -301,6 +301,17 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .cpage-head .label{flex:1;min-width:0}
 .cpage-name{display:flex;align-items:center;gap:8px;font-weight:600;font-size:18px}
 .hm-row{display:flex;align-items:flex-start}
+.ov-card{width:max(100%, min(1100px, calc(100vw - 56px)));position:relative;left:50%;transform:translateX(-50%)}
+.ov-seg{margin:0 0 10px}
+.ov-sub{text-align:left;margin:0 0 8px}
+.rc-names,.rc-ends{flex:none;font-size:12px}
+.rc-names{width:104px;padding-right:6px}
+.rc-ends{width:46px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.rc-name{display:flex;align-items:center;gap:6px;min-width:0}
+.rc-name span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-name .dot{width:8px;height:8px}
+.rc-end{display:flex;align-items:center;justify-content:flex-end}
+.rc-end.on{color:var(--ink);font-weight:600}
 .hm-days{flex:none}
 .hm-scroll{overflow-x:auto;padding-bottom:4px;min-width:0;flex:1}
 .hm{display:block}
@@ -449,7 +460,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 'use strict';
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
-  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange' };
+  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -2245,7 +2256,7 @@ setInterval(() => { updatePlanNow(); if (view === 'plan' && !plan.drag && !docum
 // then kept current by the normal sync (which reaches back over any gap), so 0 extra requests day to day.
 let counters = store.get(K.counters, null);   // {at, list:[{id, name, targets:[{p,t,g}], mode:'days'|'sessions', min, goal:{kind:'min'|'max', n, per:'week'|'month'}|null, base:{n, through}|null, pin}]}
 let counts = store.get(K.counts, null);       // {ws, a, b, full, list:[[startMin, endMin, projectId, taskId]], names:{taskId: name}}
-let countRange = store.get(K.countRange, 'year'), countsLoading = false, countsFailed = false;
+let countRange = store.get(K.countRange, 'year'), countView = store.get(K.countView, 'good'), countsLoading = false, countsFailed = false;
 const MERGE_GAP = 30;   // minutes: entries closer than this form one session
 const CRANGES = [['week', '7 days', 'Last 7 days'], ['month', 'Month', 'Last month'], ['3m', '3M', 'Last 3 months'], ['6m', '6M', 'Last 6 months'],
   ['9m', '9M', 'Last 9 months'], ['12m', '12M', 'Last 12 months'], ['year', 'Year', 'This year']];
@@ -2414,7 +2425,9 @@ function ruleText(c){
   if (c.goal) parts.push(c.goal.kind === 'max' ? `At most ${c.goal.n} a ${c.goal.per}` : `Goal ${c.goal.n}+ a ${c.goal.per}`);
   return parts.join(' · ');
 }
-function counterColor(c, i){ return (c.targets[0] && projectsById.get(c.targets[0].p)?.color) || PALETTE[i % PALETTE.length]; }
+// Each counter gets its own color (by position), so counters from the same project stay tellable apart.
+const CPAL = ['#E8590C','#1C7ED6','#2F9E44','#AE3EC9','#F08C00','#0CA678','#D6336C','#4263EB','#74B816','#C2255C','#1098AD','#7048E8'];
+function counterColor(c, i){ return CPAL[i % CPAL.length]; }
 function goalText(c, st){
   if (!c.goal) return st.cur ? `Streak ${plural(st.cur, 'day')}` : '';
   const g = c.goal, v = st.thisPeriod;
@@ -2473,6 +2486,8 @@ function renderCounts(){
   if (fc) { renderCounterPage(fc, counters.list.indexOf(fc)); return; }
   countFocus = null;
   const label = CRANGES.find(r => r[0] === countRange)[2], { A, B } = countRangeDays(countRange);
+  const ov = el('div', { class:'card ov-card' });
+  out.splice(0, 0, ov);   // overview above the range buttons; it isn't tied to the range
   out.push(el('div', { class:'sum-sub', style:'margin-top:10px', text: `${label}: ${fmtD(parseYmd(A), { month:'short', day:'numeric', year:'numeric' })} to today` }));
   counters.list.forEach((c, i) => out.push(counterCard(c, i, A, B)));
   out.push(el('div', { class:'btns', style:'margin-top:14px;justify-content:center' },
@@ -2483,6 +2498,7 @@ function renderCounts(){
     el('button', { class:'btn', type:'button', text: countsLoading ? 'Recounting…' : 'Recount from Clockify (about 3 requests)', disabled: countsLoading ? '' : null,
       onclick: () => { if (confirm('Download 12 months of entries again? Use this after editing old entries on the Clockify website. About 3 requests.')) ensureCounts(true); } })));
   box.replaceChildren(...out);
+  overviewInto(ov, counterData());   // measured after it is on the page
 }
 function counterCard(c, i, A, B){
   const ev = counterEvents(c), r = countIn(c, ev, countRange), st = streakOf(c, ev), col = counterColor(c, i);
@@ -2546,57 +2562,130 @@ function renderCounterPage(c, i){
   if (y.base) notes.push(`The ${y.base.n} counted before ${fmtD(addDays(parseYmd(y.base.through), 1))} are in the year total but have no dates, so those days look empty.`);
   box.append(el('p', { class:'hint', style:'margin-top:12px', text: notes.join(' ') }));
 }
-function heatmapInto(card, c, col, ev, dms){
-  const today = ymd(new Date()), cov = coveredFrom(), ws = WD[cache?.weekStart] ?? 1;
+// GitHub-style grid: one column per week (Clockify week start), one row per weekday, last 53 weeks of local data.
+// o: { label, shade(level 1-4), cell(d) -> { lv 0-4, under }, describe(day, d) -> text, goal(weekStart) -> { cls, title } | null, legend: [nodes] }
+function dayGridInto(card, o){
+  const today = ymd(new Date()), cov = coveredFrom();
   const weeks = [];
   for (let w = weekOf(today); weeks.length < 53 && w >= weekOf(cov); w = ymd(addDays(parseYmd(w), -7))) weeks.unshift(w);
+  const avail = (card.clientWidth || 340) - 34 - 30, n = weeks.length, fit = Math.floor(avail / n);
+  const step = fit >= 10 ? Math.min(16, fit) : 14, cell = step - 2, T = 16;   // too narrow to fit: bigger cells and scroll
+  const W = n * step, H = T + 7 * step + (o.goal ? step + 6 : 0);
+  const detail = el('div', { class:'detail' }, el('span', { class:'muted', text:'Tap a day to see it.' }));
+  const chart = svg('svg', { class:'hm', width:W, height:H, viewBox:`0 0 ${W} ${H}`, role:'img', 'aria-label': o.label });
+  const days = svg('svg', { class:'hm hm-days', width:30, height:H, viewBox:`0 0 30 ${H}`, 'aria-hidden':'true' });   // stays put while the grid scrolls
+  for (const r of [0, 2, 4]) days.append(svg('text', { x:0, y: T + r * step + cell - 1, text: fmtD(addDays(parseYmd(weeks[0]), r), { weekday:'short' }) }));
+  let lastLbl = -9, sel = null;
+  weeks.forEach((w, k) => {
+    const x = k * step;
+    for (let r = 0; r < 7; r++) {
+      const day = addDays(parseYmd(w), r), d = ymd(day);
+      if (day.getDate() === 1 && k - lastLbl >= 3) { chart.append(svg('text', { x, y: 11, text: fmtD(day, { month:'short' }) })); lastLbl = k; }
+      if (d > today) continue;
+      const before = d < cov, info = before ? { lv:0 } : o.cell(d);
+      const rect = svg('rect', { x, y: T + r * step, width:cell, height:cell, rx:2, class:`hm-c${info.under ? ' under' : ''}${before ? ' none' : ''}${d === today ? ' today' : ''}`,
+          style:`fill:${info.lv ? o.shade(info.lv) : 'var(--bg)'}`,
+          onclick: () => {
+            sel?.classList.remove('sel'); rect.classList.add('sel'); sel = rect;
+            detail.replaceChildren(el('strong', { text: fmtD(day, { weekday:'short', month:'short', day:'numeric', year:'numeric' }) }),
+              el('span', { class:'muted', text: `  ${before ? 'before your data starts' : o.describe(day, d)}` }));
+          } },
+        svg('title', { text: fmtD(day, { weekday:'short', month:'short', day:'numeric' }) }));
+      chart.append(rect);
+    }
+    const g = o.goal?.(w);
+    if (g) chart.append(svg('rect', { x, y: T + 7 * step + 4, width:cell, height: step - 4, rx:2, class:`hm-goal ${g.cls}`, style: w < cov ? 'opacity:.35' : null }, svg('title', { text: g.title })));
+  });
+  const scroller = el('div', { class:'hm-scroll' }, chart);
+  const sw = lv => { const k = el('i', { class:'hm-key' }); k.style.background = lv ? o.shade(lv) : 'var(--bg)'; return k; };
+  card.append(el('div', { class:'hm-row' }, days, scroller),
+    el('div', { class:'hm-legend' }, el('span', { text:'Less' }), [0, 1, 2, 3, 4].map(sw), el('span', { text:'More' }), o.legend || []), detail);
+  scroller.scrollLeft = scroller.scrollWidth;   // open on the current week
+}
+function heatmapInto(card, c, col, ev, dms){
   const counted = new Map(); for (const d of ev) counted.set(d, (counted.get(d) || 0) + 1);
   // shade levels from the spread of your own counted days (quartiles), like GitHub
   const vals = [...counted.keys()].map(d => dms.get(d) || 0).filter(v => v > 0).sort((a, b) => a - b);
   const q = p => vals.length ? vals[Math.min(vals.length - 1, Math.floor(p * vals.length))] : 0;
   const t1 = q(.25), t2 = q(.5), t3 = q(.75), SH = [0, 32, 55, 78, 100];
-  const level = ms => ms <= t1 ? 1 : ms <= t2 ? 2 : ms <= t3 ? 3 : 4;
-  const shade = lv => `color-mix(in srgb, ${col} ${SH[lv]}%, var(--surface))`;
-  const avail = (card.clientWidth || 340) - 34 - 30, n = weeks.length, fit = Math.floor(avail / n);
-  const step = fit >= 10 ? Math.min(16, fit) : 14, cell = step - 2, L = 0, T = 16;   // too narrow to fit: bigger cells and scroll
-  const goalW = c.goal?.per === 'week';
-  const W = L + n * step, H = T + 7 * step + (goalW ? step + 6 : 0);
-  const detail = el('div', { class:'detail' }, el('span', { class:'muted', text:'Tap a day to see it.' }));
-  const chart = svg('svg', { class:'hm', width:W, height:H, viewBox:`0 0 ${W} ${H}`, role:'img', 'aria-label':`${c.name}: ${counted.size} days over ${n} weeks` });
-  const days = svg('svg', { class:'hm hm-days', width:30, height:H, viewBox:`0 0 30 ${H}`, 'aria-hidden':'true' });   // stays put while the grid scrolls
-  for (const r of [0, 2, 4]) days.append(svg('text', { x:0, y: T + r * step + cell - 1, text: fmtD(addDays(parseYmd(weeks[0]), r), { weekday:'short' }) }));
-  let lastLbl = -9, sel = null;
-  weeks.forEach((w, k) => {
-    const x = L + k * step;
-    for (let r = 0; r < 7; r++) {
-      const day = addDays(parseYmd(w), r), d = ymd(day);
-      if (day.getDate() === 1 && k - lastLbl >= 3) { chart.append(svg('text', { x, y: 11, text: fmtD(day, { month:'short' }) })); lastLbl = k; }
-      if (d > today) continue;
-      const ms = dms.get(d) || 0, cnt = counted.get(d) || 0, before = d < cov;
-      const fill = cnt ? shade(level(ms)) : ms ? shade(1) : 'var(--bg)';
-      const rect = svg('rect', { x, y: T + r * step, width:cell, height:cell, rx:2, class:`hm-c${!cnt && ms ? ' under' : ''}${before ? ' none' : ''}${d === today ? ' today' : ''}`, style:`fill:${fill}`,
+  const goalW = c.goal?.per === 'week', today = ymd(new Date());
+  dayGridInto(card, {
+    label: `${c.name}: ${counted.size} days`,
+    shade: lv => `color-mix(in srgb, ${col} ${SH[lv]}%, var(--surface))`,
+    cell: d => { const ms = dms.get(d) || 0, cnt = counted.get(d); return cnt ? { lv: ms <= t1 ? 1 : ms <= t2 ? 2 : ms <= t3 ? 3 : 4 } : ms ? { lv:1, under:true } : { lv:0 }; },
+    describe: (day, d) => { const ms = dms.get(d) || 0, cnt = counted.get(d) || 0;
+      return !ms ? 'nothing' : cnt ? (c.mode === 'sessions' ? `${dur(ms)} · ${plural(cnt, 'session')}` : `${dur(ms)} · counted`) : `${dur(ms)} · not counted (under ${dur(c.min * 60000)})`; },
+    goal: goalW ? w => {
+      const v = ev.filter(d => d >= w && d < ymd(addDays(parseYmd(w), 7))).length, ok = c.goal.kind === 'max' ? v <= c.goal.n : v >= c.goal.n, current = w === weekOf(today);
+      return { cls: ok ? 'met' : current ? 'open' : '', title: `Week of ${fmtD(parseYmd(w))}: ${v}${ok ? ', goal met' : current ? ', in progress' : ', goal missed'}` };
+    } : null,
+    legend: [c.min ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' under the minimum') : null,
+      goalW ? el('span', { class:'hm-note' }, el('i', { class:'hm-key goal' }), ` week met goal (${c.goal.kind === 'max' ? 'at most' : 'at least'} ${c.goal.n})`) : null] });
+}
+
+// ----- top of Counts: all counters together -----
+function counterData(){
+  return counters.list.map((c, i) => { const xs = counterMatches(c), ev = counterEvents(c, xs);
+    return { c, i, col: counterColor(c, i), ev, days: new Set(ev), dms: counterDayMs(xs), st: streakOf(c, ev) }; });
+}
+function overviewInto(card, data){
+  const sw = el('div', { class:'seg ov-seg', role:'radiogroup', 'aria-label':'Overview' }, [['good', 'Good days'], ['rows', 'By counter']].map(([k, t]) =>
+    el('button', { type:'button', role:'radio', 'aria-checked': String(countView === k), text:t,
+      onclick: () => { countView = k; store.set(K.countView, k); card.replaceChildren(); overviewInto(card, data); } })));
+  card.append(sw);
+  if (countView === 'rows') return byCounterInto(card, data);
+  // Good days: how many counters you hit each day. "At most" counters (like Gaming) don't count as a hit.
+  const good = data.filter(x => x.c.targets.length && x.c.goal?.kind !== 'max');
+  const SH = [0, 30, 55, 78, 100];
+  card.append(el('p', { class:'sum-sub ov-sub', text:`Darker = more of your ${good.length} counters hit that day (counters with an "at most" goal are left out).` }));
+  dayGridInto(card, {
+    label: 'Good days',
+    shade: lv => `color-mix(in srgb, var(--go) ${SH[lv]}%, var(--surface))`,
+    cell: d => { const f = good.filter(x => x.days.has(d)).length / (good.length || 1); return { lv: !f ? 0 : f < .25 ? 1 : f < .5 ? 2 : f < .75 ? 3 : 4 }; },
+    describe: (day, d) => { const hit = good.filter(x => x.days.has(d)); return `${hit.length} of ${good.length}${hit.length ? ' · ' + hit.map(x => x.c.name).join(', ') : ''}`; } });
+}
+// By counter: one colored row per counter, one square per day for the last 13 weeks. Streaks read as unbroken runs.
+function byCounterInto(card, data){
+  const rows = data.filter(x => x.c.targets.length), today = startOfDay(new Date()), N = 91, cov = coveredFrom();
+  const dates = []; for (let k = N - 1; k >= 0; k--) dates.push(addDays(today, -k));
+  const nameW = 104, endW = 46, avail = (card.clientWidth || 340) - 34 - nameW - endW, fit = Math.floor(avail / N);
+  const step = fit >= 7 ? Math.min(14, fit) : 12, rowH = 18, T = 16, W = N * step, H = T + rows.length * rowH;
+  const detail = el('div', { class:'detail' }, el('span', { class:'muted', text:'Tap a square to see that day.' }));
+  const chart = svg('svg', { class:'hm', width:W, height:H, viewBox:`0 0 ${W} ${H}`, role:'img', 'aria-label':'Each counter, day by day, last 13 weeks' });
+  let lastLbl = -99, sel = null;
+  dates.forEach((day, k) => {
+    if (day.getDate() === 1 && k - lastLbl >= 10) { chart.append(svg('text', { x: k * step, y: 11, text: fmtD(day, { month:'short' }) })); lastLbl = k; }
+    if (+day === +today) chart.append(svg('text', { x: W, y: 11, 'text-anchor':'end', text:'Today' }));
+  });
+  rows.forEach((x, r) => {
+    const y = T + r * rowH + 3;
+    dates.forEach((day, k) => {
+      const d = ymd(day), hit = x.days.has(d), ms = x.dms.get(d) || 0, before = d < cov;
+      const fill = hit ? x.col : ms ? `color-mix(in srgb, ${x.col} 25%, var(--surface))` : 'var(--bg)';
+      const rect = svg('rect', { x: k * step, y, width: step - 2, height: rowH - 6, rx:2, class:`hm-c${before ? ' none' : ''}${k === N - 1 ? ' today' : ''}`, style:`fill:${fill}`,
           onclick: () => {
             sel?.classList.remove('sel'); rect.classList.add('sel'); sel = rect;
-            const what = before ? 'before your data starts' : !ms ? 'nothing' : cnt ? (c.mode === 'sessions' ? `${dur(ms)} · ${plural(cnt, 'session')}` : `${dur(ms)} · counted`) : `${dur(ms)} · not counted (under ${dur(c.min * 60000)})`;
-            detail.replaceChildren(el('strong', { text: fmtD(day, { weekday:'short', month:'short', day:'numeric', year:'numeric' }) }), el('span', { class:'muted', text: `  ${what}` }));
+            detail.replaceChildren(el('strong', { text: `${x.c.name} · ${fmtD(day, { weekday:'short', month:'short', day:'numeric' })}` }),
+              el('span', { class:'muted', text: `  ${before ? 'before your data starts' : !ms ? 'nothing' : hit ? `${dur(ms)} · counted` : `${dur(ms)} · under the minimum`}` }));
           } },
-        svg('title', { text: `${fmtD(day, { weekday:'short', month:'short', day:'numeric' })}: ${ms ? dur(ms) : 'nothing'}` }));
+        svg('title', { text: `${x.c.name}, ${fmtD(day, { month:'short', day:'numeric' })}` }));
       chart.append(rect);
-    }
-    if (goalW) {   // weekly goal marker under each column
-      const v = ev.filter(d => d >= w && d < ymd(addDays(parseYmd(w), 7))).length, ok = c.goal.kind === 'max' ? v <= c.goal.n : v >= c.goal.n;
-      const current = w === weekOf(today), partial = w < cov;
-      chart.append(svg('rect', { x, y: T + 7 * step + 4, width:cell, height: step - 4, rx:2, class: ok ? 'hm-goal met' : current ? 'hm-goal open' : 'hm-goal',
-        style: partial ? 'opacity:.35' : null }, svg('title', { text:`Week of ${fmtD(parseYmd(w))}: ${v}${ok ? ', goal met' : current ? ', in progress' : ', goal missed'}` })));
-    }
+    });
   });
+  const names = el('div', { class:'rc-names', style:`padding-top:${T}px` }, rows.map(x => {
+    const dot = el('span', { class:'dot' }); dot.style.background = x.col;
+    return el('div', { class:'rc-name', style:`height:${rowH}px`, title: x.c.name }, dot, el('span', { text: x.c.name }));
+  }));
+  const ends = el('div', { class:'rc-ends', style:`padding-top:${T}px` }, rows.map(x => {
+    const u = { day:'d', week:'w', month:'mo' }[x.st.unit];
+    return el('div', { class:`rc-end${x.st.cur ? ' on' : ''}`, style:`height:${rowH}px`, title: `Current streak: ${plural(x.st.cur, x.st.unit)}`, text: x.st.cur ? `${x.st.cur}${u}` : '–' });
+  }));
   const scroller = el('div', { class:'hm-scroll' }, chart);
-  const sw = lv => { const s = el('i', { class:'hm-key' }); s.style.background = lv ? shade(lv) : 'var(--bg)'; return s; };
-  const legend = el('div', { class:'hm-legend' }, el('span', { text:'Less' }), [0, 1, 2, 3, 4].map(sw), el('span', { text:'More' }),
-    c.min ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' under the minimum') : null,
-    goalW ? el('span', { class:'hm-note' }, el('i', { class:'hm-key goal' }), ` week met goal (${c.goal.kind === 'max' ? 'at most' : 'at least'} ${c.goal.n})`) : null);
-  card.append(el('div', { class:'hm-row' }, days, scroller), legend, detail);
-  scroller.scrollLeft = scroller.scrollWidth;   // open on the current week
+  card.append(el('div', { class:'hm-row' }, names, scroller, ends),
+    el('div', { class:'hm-legend' }, el('span', { class:'hm-note', style:'margin-left:0' }, el('i', { class:'hm-key', style:'background:var(--go)' }), ' counted'),
+      el('span', { class:'hm-note' }, el('i', { class:'hm-key', style:'background:color-mix(in srgb, var(--go) 25%, var(--surface))' }), ' under the minimum'),
+      el('span', { class:'hm-note' }, 'right column: current streak (d = days, w = weeks)')), detail);
+  scroller.scrollLeft = scroller.scrollWidth;   // open on today
 }
 
 // ----- add / edit counter -----
