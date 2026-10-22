@@ -294,6 +294,11 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .qr{background:#fff;border-radius:var(--radius-sm);padding:4px;max-width:520px;margin:0 auto}
 .qr svg{display:block;width:100%;height:auto}
 .sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
+/* Tracking itself */
+.tstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.tstat{background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;display:flex;flex-direction:column}
+.tstat b{font-family:var(--digits);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600}
+.tstat span{font-size:12px;color:var(--muted)}
 /* Counters */
 .ccard.tap{cursor:pointer}
 .ccard.tap:hover{border-color:color-mix(in srgb, var(--go) 45%, var(--line))}
@@ -460,7 +465,8 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 'use strict';
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
-  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView' };
+  plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
+  meta:'qt.meta', metaOther:'qt.metaOther' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -647,6 +653,7 @@ async function start(p, t){
       }
     }
     running = toRunning(e);
+    metaStarted(!!prev);
     recent = [{ p:p.id, t:t?.id || null }, ...recent.filter(r => !(r.p === p.id && r.t === (t?.id || null)))].slice(0, 8);
     store.set(K.recent, recent);
     toast(`Started ${t ? t.name : p.name}`);
@@ -660,7 +667,7 @@ async function stop(){
   const r = running, now = isoNow();
   try {
     const e = await stopRemote(now, false);
-    recordStopped(e, r, now);
+    recordStopped(e, r, now); metaCount('stops');
     toast(`Stopped at ${fmt(Date.now() - r.start)}`); running = null;
   } catch (err) {
     if (err.status === 400 || err.status === 404) { running = null; toast('That timer was already stopped'); sync('user'); }
@@ -982,7 +989,7 @@ async function createItem(){
       projOpen[p.id] = true; store.set(K.projOpen, projOpen);
       toast(`Created task ${task.name}`); startP = p; startT = task;
     }
-    store.set(K.cache, cache); indexCache();
+    store.set(K.cache, cache); indexCache(); metaCount('creates');
     closeCreate(); query = ''; $('search').value = '';
     busy = false;
     if (startAfter && startP) await start(startP, startT); else renderAll();
@@ -1013,7 +1020,7 @@ $('forgetBtn').addEventListener('click', () => {
   if (!confirm('Remove the API key, cached projects, your plans and counters from this browser? Copy or save your plans first (Plan tab) to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -1547,6 +1554,7 @@ const fineMouse = () => matchMedia('(pointer: fine)').matches;
 
 const dayBlocks = d => plans[d]?.b || [];
 function savePlanDay(d, blocks){
+  metaCount('edits');
   plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans);
   try { navigator.storage?.persist?.(); } catch {}   // ask the browser not to clear saved plans when space runs low
 }
@@ -2002,7 +2010,7 @@ function templateDialog(d){
 
 // ----- moving plans between devices (no network: clipboard or a file) -----
 const PLAN_APP = 'chronologic-plan', PLAN_APPS = [PLAN_APP, 'quick-timer-plan'];   // older exports used the Quick Timer name
-function exportText(){ return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters }); }
+function exportText(){ saveMeta(true); return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters, meta: metaExport(90) }); }
 function cleanBlocks(arr){
   if (!Array.isArray(arr)) return [];
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
@@ -2023,6 +2031,7 @@ function importText(txt){
     plans[d] = { at, b: cleanBlocks(day.b) }; days++;
   }
   if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) if (Array.isArray(o.templates[w])) planTpl[w] = cleanBlocks(o.templates[w]);
+  importMeta(o.meta);
   const oc = cleanCounters(o.counters);
   if (oc && (!counters || oc.at > (counters.at || 0))) { counters = oc; store.set(K.counters, counters); }
   store.set(K.plan, plans); store.set(K.planTpl, planTpl); snapshotActuals();
@@ -2055,11 +2064,16 @@ async function inflate(bytes){
 async function planLink(){
   const today = ymd(new Date()), all = Object.keys(plans).filter(d => d >= today).sort();
   const strip = bl => bl.map(({ id, ...r }) => r);
-  for (let days = all.slice(); ; days.pop()) {
+  saveMeta(true);
+  const build = async (days, metaDays) => {
     const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
     const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
-    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters });
-    const url = `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
+    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters, meta: metaDays ? metaExport(metaDays) : undefined });
+    return `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
+  };
+  for (const md of [30, 14, 7]) { const url = await build(all, md); if (url.length <= LINK_MAX) return { url, days: all.length, left: 0, fits: true }; }   // app-time totals shrink first
+  for (let days = all.slice(); ; days.pop()) {
+    const url = await build(days, 0);
     if (url.length <= LINK_MAX || !days.length) return { url, days: days.length, left: all.length - days.length, fits: url.length <= LINK_MAX };
   }
 }
@@ -2480,6 +2494,7 @@ function renderCounts(){
     out.push(el('div', { class:'empty' }, el('div', { text: countsLoading ? 'Downloading 12 months of entries (about 3 requests, once per device)…'
         : countsFailed ? "Couldn't download your entries." : 'Getting ready…' }),
       countsFailed ? el('button', { class:'btn', type:'button', text:'Try again', style:'margin-top:12px', onclick: () => ensureCounts(true) }) : null));
+    out.push(trackingCardEl());
     box.replaceChildren(...out); return;
   }
   const fc = countFocus && counters.list.find(x => x.id === countFocus);
@@ -2492,6 +2507,7 @@ function renderCounts(){
   counters.list.forEach((c, i) => out.push(counterCard(c, i, A, B)));
   out.push(el('div', { class:'btns', style:'margin-top:14px;justify-content:center' },
     el('button', { class:'btn primary', type:'button', text:'+ Add counter', onclick: () => counterDialog(null) })));
+  out.push(trackingCardEl());
   out.push(el('p', { class:'hint', style:'margin-top:14px;text-align:center', text:
     `Counted from your Clockify entries since ${fmtD(new Date(counts.a), { month:'short', day:'numeric', year:'numeric' })}, kept up to date by normal syncing. "Partial" means the range starts before that. Sessions less than ${MERGE_GAP} minutes apart count as one.` }));
   out.push(el('div', { class:'btns', style:'justify-content:center' },
@@ -2750,6 +2766,127 @@ function counterDialog(c){
         if (!confirm(`Delete the ${c.name} counter? Your Clockify entries are not affected.`)) return;
         counters.list = counters.list.filter(x => x.id !== c.id); saveCounters(); dlg.close(); renderCounts(); renderList(); } }) : null));
   drawChosen(); drawPick(); syncGoal(); if (!c) name.focus();
+}
+
+// ---------- tracking itself: time spent in this app (local only, 0 requests) ----------
+// Counted while the app is on screen and you touched, clicked, typed or scrolled in the last 60 seconds.
+// Day record: [seconds on Timer, Search, Plan, Summary, Counts, Settings, starts, switches, stops, creates, plan edits, opens, time-to-start seconds, time-to-start count]
+const META_SCREENS = [['timer', 'Timer'], ['search', 'Search'], ['plan', 'Plan'], ['summary', 'Summary'], ['counts', 'Counts'], ['settings', 'Settings']];
+const MI = { starts:6, switches:7, stops:8, creates:9, edits:10, opens:11, ttsSum:12, ttsN:13 }, META_LEN = 14, IDLE = 60000;
+function deviceLabel(){
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac/.test(ua) ? 'Mac' : /Win/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Device';
+  const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+  return br ? `${os} · ${br}` : os;
+}
+let meta = store.get(K.meta, null), metaOther = store.get(K.metaOther, {});
+if (!meta?.dev) meta = { dev: newId(), label: deviceLabel(), at: 0, days: {} };
+let lastActive = Date.now(), lastTick = Date.now(), openAt = Date.now(), hiddenAt = 0, metaDirty = true, metaRange = 'today';
+const metaDay = () => { const d = ymd(new Date()); return meta.days[d] || (meta.days[d] = new Array(META_LEN).fill(0)); };
+function metaCount(k, n = 1){ metaDay()[MI[k]] += n; metaDirty = true; }
+function metaStarted(wasRunning){
+  metaCount(wasRunning ? 'switches' : 'starts');
+  const t = Date.now() - openAt;
+  if (openAt && t < 600000) { metaCount('ttsSum', t / 1000); metaCount('ttsN'); }   // first start after opening the app
+  openAt = 0;
+}
+function screenNow(){
+  if (!$('settings').classList.contains('hidden')) return 5;
+  if (view === 'summary') return sum.kind === 'counts' ? 4 : 3;
+  if (view === 'plan') return 2;
+  return query || document.activeElement === $('search') ? 1 : 0;
+}
+function metaTick(){
+  const now = Date.now(), dt = Math.min(now - lastTick, 6000); lastTick = now;
+  if (document.visibilityState !== 'visible' || now - lastActive > IDLE || dt <= 0) return;
+  metaDay()[screenNow()] += dt / 1000; metaDirty = true;
+}
+function saveMeta(force){
+  if (!metaDirty && !force) return;
+  metaTick(); metaDirty = false; meta.at = Date.now();
+  const cut = ymd(addDays(new Date(), -90));
+  for (const d of Object.keys(meta.days)) { if (d < cut) delete meta.days[d]; else meta.days[d] = meta.days[d].map(v => Math.round(v * 10) / 10); }
+  store.set(K.meta, meta);
+}
+// No 'scroll': the app scrolls itself when redrawing (Plan view), which isn't you. Touch and wheel cover real scrolling.
+for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(t, () => { lastActive = Date.now(); }, { passive:true, capture:true });
+document.addEventListener('visibilitychange', () => {
+  const now = Date.now();
+  if (document.visibilityState === 'hidden') { metaTick(); hiddenAt = now; saveMeta(); return; }
+  lastTick = lastActive = now;
+  if (now - hiddenAt > 5 * 60000) { metaCount('opens'); openAt = now; }   // back after 5+ minutes away = a new visit
+});
+addEventListener('pagehide', () => saveMeta());
+setInterval(metaTick, 5000);
+setInterval(() => saveMeta(), 30000);
+metaCount('opens');
+
+// Shared with other devices through Copy plans / file / QR; each device's numbers stay separate and are added up for display.
+function metaExport(days){
+  const cut = ymd(addDays(new Date(), -days));
+  const pick = m => ({ label: m.label, at: m.at, days: Object.fromEntries(Object.entries(m.days).filter(([d]) => d > cut)) });
+  const out = { [meta.dev]: pick(meta) };
+  for (const [k, m] of Object.entries(metaOther)) out[k] = pick(m);
+  return out;
+}
+function importMeta(o){
+  if (!o || typeof o !== 'object') return;
+  for (const [dev, m] of Object.entries(o).slice(0, 20)) {
+    if (dev === meta.dev || !/^[\w-]{1,32}$/.test(dev) || !m || typeof m.days !== 'object') continue;
+    const at = Number(m.at) || 0, old = metaOther[dev];
+    if (old && old.at >= at) continue;
+    const days = { ...(old?.days || {}) };
+    for (const [d, a] of Object.entries(m.days)) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(a) && a.length === META_LEN) days[d] = a.map(v => Math.max(0, Math.min(1e6, Number(v) || 0)));
+    metaOther[dev] = { label: typeof m.label === 'string' ? m.label.slice(0, 40) : 'Other device', at, days };
+  }
+  store.set(K.metaOther, metaOther);
+}
+const fmtSec = sec => { const s = Math.round(sec); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+// Tracked time over the same days, from the counters' local entry copy (or today's synced data).
+function trackedMs(from){
+  const a = +parseYmd(from), now = Date.now();
+  let ms = 0;
+  if (counts?.full && counts.ws === cache?.ws) for (const x of counts.list) ms += overlap(x[0] * 60000, x[1] * 60000, a, now);
+  else if (from === ymd(new Date()) && cache) { const v = sumCache.get(todayKey(period('today', 0))); if (!v) return null; for (const g of v.segs) ms += overlap(g.s, g.e, a, now); }
+  else return null;
+  if (running) ms += overlap(running.start, now, a, now);
+  return ms;
+}
+function trackingCardEl(){
+  metaTick();
+  const card = el('div', { class:'card track-card' });
+  const n = { today:1, '7d':7, '30d':30 }[metaRange], from = ymd(addDays(new Date(), -(n - 1)));
+  const devices = [{ label: `${meta.label} (this device)`, days: meta.days, mine:true }, ...Object.values(metaOther)];
+  const tot = new Array(META_LEN).fill(0), perDev = [];
+  for (const dv of devices) {
+    let t = 0;
+    for (const [d, a] of Object.entries(dv.days)) if (d >= from) { a.forEach((v, i) => { tot[i] += v; }); t += a.slice(0, 6).reduce((x, y) => x + y, 0); }
+    perDev.push({ ...dv, t });
+  }
+  const app = tot.slice(0, 6).reduce((x, y) => x + y, 0), tracked = trackedMs(from);
+  const seg = el('div', { class:'seg', role:'radiogroup', 'aria-label':'Range', style:'margin:0 0 12px' }, [['today', 'Today'], ['7d', '7 days'], ['30d', '30 days']].map(([k, t]) =>
+    el('button', { type:'button', role:'radio', 'aria-checked': String(metaRange === k), text:t, onclick: () => { metaRange = k; card.replaceWith(trackingCardEl()); } })));
+  const pct = tracked ? app * 1000 / tracked * 100 : null;
+  const bars = el('div', { class:'bars' });
+  const maxS = Math.max(1, ...tot.slice(0, 6));
+  META_SCREENS.forEach(([, name], i) => {
+    if (!tot[i]) return;
+    const fill = el('div', { class:'fill' }); fill.style.width = `${tot[i] / maxS * 100}%`; fill.style.background = 'var(--go)';
+    bars.append(el('div', { class:'bar' }, el('div', { class:'bar-top' }, el('span', { class:'bar-name', text:name }), el('span', { class:'bar-time', text: fmtSec(tot[i]) })),
+      el('div', { class:'bar-bottom' }, el('div', { class:'track' }, fill), el('span', { class:'pct', text: app ? `${Math.round(tot[i] / app * 100)}%` : '' }))));
+  });
+  const stat = (label, v) => el('div', { class:'tstat' }, el('b', { text: String(v) }), el('span', { text: label }));
+  card.append(el('h4', { text:'Tracking itself' }), seg,
+    el('div', { class:'task-focus', style:'padding-top:0' },
+      el('div', { class:'task-total', style:'margin-top:0', text: fmtSec(app) }),
+      el('div', { class:'sum-sub', text: pct == null ? 'in the app' : `in the app · ${pct < 0.1 && app ? '<0.1' : pct.toFixed(1)}% of ${dur(tracked)} tracked` })),
+    app ? bars : el('p', { class:'hint', style:'text-align:center', text:'Nothing measured yet for this range.' }),
+    el('div', { class:'tstats' }, stat('Starts', tot[MI.starts]), stat('Switches', tot[MI.switches]), stat('Stops', tot[MI.stops]),
+      stat('Opens', tot[MI.opens]), stat('Created', tot[MI.creates]), stat('Plan edits', tot[MI.edits])),
+    el('p', { class:'sum-sub', style:'margin:10px 0 0', text: tot[MI.ttsN] ? `Open to timer started: ${fmtSec(tot[MI.ttsSum] / tot[MI.ttsN])} on average (${plural(tot[MI.ttsN], 'time')})` : 'Open to timer started: no data yet' }),
+    el('p', { class:'sum-sub', style:'margin:6px 0 0', text: perDev.map(d => `${d.label} ${fmtSec(d.t)}${d.mine ? '' : ` (as of ${fmtD(new Date(d.at))})`}`).join(' · ') }),
+    el('p', { class:'hint', style:'margin:10px 0 0', text:"Counted only while Chronologic is on screen and you've touched it in the last minute. Other devices' numbers arrive with Send to phone / Copy plans. Stays on your devices; nothing is sent to Clockify." }));
+  return card;
 }
 
 // ---------- boot ----------
