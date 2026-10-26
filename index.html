@@ -294,6 +294,15 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 .qr{background:#fff;border-radius:var(--radius-sm);padding:4px;max-width:520px;margin:0 auto}
 .qr svg{display:block;width:100%;height:auto}
 .sheet textarea{width:100%;min-height:140px;border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:var(--radius-sm);padding:10px;font:12px ui-monospace,Menlo,Consolas,monospace}
+/* Logs */
+.logs-head{margin:16px 4px 4px}
+.log-add{flex:none;width:36px;height:36px;border-radius:50%;border:0;background:var(--go);color:var(--go-ink);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.lm-axis{justify-content:space-around}
+.log-stars{display:flex;gap:4px}
+.log-stars button{border:0;background:none;font-size:26px;line-height:1;cursor:pointer;color:var(--line);padding:2px}
+.log-stars button.on{color:#F5A524}
+.sheet textarea#lNote{min-height:0;font:inherit}
+.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:var(--radius-sm);padding:10px 12px;color:inherit;font:inherit;resize:vertical}
 /* Tracking itself */
 .tstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
 .tstat{background:var(--bg);border-radius:var(--radius-sm);padding:8px 10px;display:flex;flex-direction:column}
@@ -448,12 +457,14 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
   <div id="list"></div>
   <div id="summary" class="hidden"></div>
   <div id="plan" class="hidden"></div>
+  <div id="logs" class="hidden"></div>
 </div>
 <nav class="tabbar" aria-label="Main">
   <div class="tabbar-in">
     <button class="nav-btn" type="button" id="navTimer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg><span>Timer</span></button>
     <button class="nav-btn" type="button" id="navSearch"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Search</span></button>
     <button class="nav-btn" type="button" id="navPlan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h4"/></svg><span>Plan</span></button>
+    <button class="nav-btn" type="button" id="navLogs"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7h6M9 11h4"/></svg><span>Logs</span></button>
     <button class="nav-btn" type="button" id="navSummary"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Summary</span></button>
     <button class="nav-btn" type="button" id="navSettings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
   </div>
@@ -466,7 +477,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
   plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
-  meta:'qt.meta', metaOther:'qt.metaOther' };
+  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -1017,10 +1028,10 @@ $('wsSelect').addEventListener('change', async e => {
   try { sumCache.clear(); await refreshData(true); await sync('user'); showSettings(false); } catch (err) { handleError(err); }
 });
 $('forgetBtn').addEventListener('click', () => {
-  if (!confirm('Remove the API key, cached projects, your plans and counters from this browser? Copy or save your plans first (Plan tab) to keep them.')) return;
+  if (!confirm('Remove the API key, cached projects, your plans, counters and LOGS (books, movies…) from this browser? Logs exist only on your devices. Use Save file in the Plan tab first to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -1439,25 +1450,28 @@ function showSeg(detail, q){
 
 function setView(v){
   const was = view; view = v;
-  const sumV = v === 'summary', planV = v === 'plan', timerV = v === 'timer';
+  const sumV = v === 'summary', planV = v === 'plan', timerV = v === 'timer', logsV = v === 'logs';
   $('timerBar').classList.toggle('hidden', !timerV); $('summaryBar').classList.toggle('hidden', !sumV);
   $('list').classList.toggle('hidden', !timerV); $('summary').classList.toggle('hidden', !sumV); $('plan').classList.toggle('hidden', !planV);
+  $('logs').classList.toggle('hidden', !logsV);
   $('create').classList.add('hidden'); $('settings').classList.add('hidden');
   if (sumV) { loadSummary(); window.scrollTo({ top:0 }); }
   else if (planV) { if (was !== 'plan') plan.date = ymd(new Date()); plan.jump = true; renderPlan(); window.scrollTo({ top:0 }); }
+  else if (logsV) { if (was !== 'logs') logFocus = null; renderLogs(); window.scrollTo({ top:0 }); }
   else renderList();
   updateNav();
 }
 function updateNav(){
   const settingsOpen = !$('settings').classList.contains('hidden');
-  const cur = view === 'summary' ? 'navSummary' : view === 'plan' ? 'navPlan' : settingsOpen ? 'navSettings' : 'navTimer';
-  for (const id of ['navTimer','navSearch','navPlan','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
+  const cur = view === 'summary' ? 'navSummary' : view === 'plan' ? 'navPlan' : view === 'logs' ? 'navLogs' : settingsOpen ? 'navSettings' : 'navTimer';
+  for (const id of ['navTimer','navSearch','navPlan','navLogs','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
 }
 function toTimer(){ if (view !== 'timer') setView('timer'); showSettings(false); closeCreate(); window.scrollTo({ top:0 }); }
 $('navTimer').addEventListener('click', toTimer);
 $('navSearch').addEventListener('click', () => { toTimer(); $('search').focus(); });
 $('navSummary').addEventListener('click', () => setView('summary'));
 $('navPlan').addEventListener('click', () => setView('plan'));
+$('navLogs').addEventListener('click', () => setView('logs'));
 $('navSettings').addEventListener('click', () => {
   if (view !== 'timer') setView('timer');
   const open = $('settings').classList.contains('hidden');
@@ -2010,7 +2024,7 @@ function templateDialog(d){
 
 // ----- moving plans between devices (no network: clipboard or a file) -----
 const PLAN_APP = 'chronologic-plan', PLAN_APPS = [PLAN_APP, 'quick-timer-plan'];   // older exports used the Quick Timer name
-function exportText(){ saveMeta(true); return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters, meta: metaExport(90) }); }
+function exportText(){ saveMeta(true); return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters, meta: metaExport(90), logs }); }
 function cleanBlocks(arr){
   if (!Array.isArray(arr)) return [];
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
@@ -2031,12 +2045,12 @@ function importText(txt){
     plans[d] = { at, b: cleanBlocks(day.b) }; days++;
   }
   if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) if (Array.isArray(o.templates[w])) planTpl[w] = cleanBlocks(o.templates[w]);
-  importMeta(o.meta);
+  importMeta(o.meta); const logN = importLogs(o.logs);
   const oc = cleanCounters(o.counters);
   if (oc && (!counters || oc.at > (counters.at || 0))) { counters = oc; store.set(K.counters, counters); }
   store.set(K.plan, plans); store.set(K.planTpl, planTpl); snapshotActuals();
   const other = o.ws && cache && o.ws !== cache.ws ? ' They came from a different workspace, so some items may show as unknown.' : '';
-  toast(`Imported ${days} day${days === 1 ? '' : 's'}.${other}`, !!other);
+  toast(`Imported ${days} plan day${days === 1 ? '' : 's'}${logN ? ` and ${logN} log change${logN === 1 ? '' : 's'}` : ''}.${other}`, !!other);
   renderPlan();
 }
 function syncCardEl(){
@@ -2065,10 +2079,12 @@ async function planLink(){
   const today = ymd(new Date()), all = Object.keys(plans).filter(d => d >= today).sort();
   const strip = bl => bl.map(({ id, ...r }) => r);
   saveMeta(true);
+  // Counter settings merge as a whole (newer wins), so the link only needs them when they changed recently.
   const build = async (days, metaDays) => {
+    const recent = x => x && metaDays && (x.at || 0) >= Date.now() - metaDays * DAY ? x : undefined;
     const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
     const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
-    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters, meta: metaDays ? metaExport(metaDays) : undefined });
+    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters: recent(counters), meta: metaDays ? metaExport(metaDays) : undefined, logs: logsExport(metaDays) });
     return `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
   };
   for (const md of [30, 14, 7]) { const url = await build(all, md); if (url.length <= LINK_MAX) return { url, days: all.length, left: 0, fits: true }; }   // app-time totals shrink first
@@ -2099,7 +2115,7 @@ async function importFromHash(){
   let txt, o;
   try { txt = await inflate(fromB64url(m[1])); o = JSON.parse(txt); } catch { toast("Couldn't read the plans in that link.", true); return; }
   const n = Object.keys(o?.plans || {}).length;
-  if (!confirm(`Import plans for ${n} day${n === 1 ? '' : 's'}${o?.templates && Object.keys(o.templates).length ? ', your templates' : ''}${o?.counters ? ' and counters' : ''} from the scanned link? Days you changed more recently on this device are kept.`)) return;
+  if (!confirm(`Import plans for ${n} day${n === 1 ? '' : 's'}${o?.templates && Object.keys(o.templates).length ? ', your templates' : ''}${o?.counters ? ', counters' : ''}${o?.logs ? ' and logs' : ''} from the scanned link? Days you changed more recently on this device are kept.`)) return;
   try { importText(txt); setView('plan'); } catch (err) { toast(err.message, true); }
 }
 window.addEventListener('hashchange', importFromHash);
@@ -2771,8 +2787,11 @@ function counterDialog(c){
 // ---------- tracking itself: time spent in this app (local only, 0 requests) ----------
 // Counted while the app is on screen and you touched, clicked, typed or scrolled in the last 60 seconds.
 // Day record: [seconds on Timer, Search, Plan, Summary, Counts, Settings, starts, switches, stops, creates, plan edits, opens, time-to-start seconds, time-to-start count]
-const META_SCREENS = [['timer', 'Timer'], ['search', 'Search'], ['plan', 'Plan'], ['summary', 'Summary'], ['counts', 'Counts'], ['settings', 'Settings']];
-const MI = { starts:6, switches:7, stops:8, creates:9, edits:10, opens:11, ttsSum:12, ttsN:13 }, META_LEN = 14, IDLE = 60000;
+// [key, label, slot in the day array]; Logs was added later at the end so older records stay valid.
+const META_SCREENS = [['timer', 'Timer', 0], ['search', 'Search', 1], ['plan', 'Plan', 2], ['logs', 'Logs', 14], ['summary', 'Summary', 3], ['counts', 'Counts', 4], ['settings', 'Settings', 5]];
+const MI = { starts:6, switches:7, stops:8, creates:9, edits:10, opens:11, ttsSum:12, ttsN:13 }, META_LEN = 15, IDLE = 60000;
+const padMeta = a => a.length < META_LEN ? a.concat(new Array(META_LEN - a.length).fill(0)) : a;
+const appSecs = a => META_SCREENS.reduce((t, x) => t + (a[x[2]] || 0), 0);
 function deviceLabel(){
   const ua = navigator.userAgent;
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac/.test(ua) ? 'Mac' : /Win/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'Device';
@@ -2782,7 +2801,7 @@ function deviceLabel(){
 let meta = store.get(K.meta, null), metaOther = store.get(K.metaOther, {});
 if (!meta?.dev) meta = { dev: newId(), label: deviceLabel(), at: 0, days: {} };
 let lastActive = Date.now(), lastTick = Date.now(), openAt = Date.now(), hiddenAt = 0, metaDirty = true, metaRange = 'today';
-const metaDay = () => { const d = ymd(new Date()); return meta.days[d] || (meta.days[d] = new Array(META_LEN).fill(0)); };
+const metaDay = () => { const d = ymd(new Date()); return (meta.days[d] = padMeta(meta.days[d] || [])); };
 function metaCount(k, n = 1){ metaDay()[MI[k]] += n; metaDirty = true; }
 function metaStarted(wasRunning){
   metaCount(wasRunning ? 'switches' : 'starts');
@@ -2794,6 +2813,7 @@ function screenNow(){
   if (!$('settings').classList.contains('hidden')) return 5;
   if (view === 'summary') return sum.kind === 'counts' ? 4 : 3;
   if (view === 'plan') return 2;
+  if (view === 'logs') return 14;
   return query || document.activeElement === $('search') ? 1 : 0;
 }
 function metaTick(){
@@ -2836,7 +2856,7 @@ function importMeta(o){
     const at = Number(m.at) || 0, old = metaOther[dev];
     if (old && old.at >= at) continue;
     const days = { ...(old?.days || {}) };
-    for (const [d, a] of Object.entries(m.days)) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(a) && a.length === META_LEN) days[d] = a.map(v => Math.max(0, Math.min(1e6, Number(v) || 0)));
+    for (const [d, a] of Object.entries(m.days)) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Array.isArray(a) && a.length >= 14 && a.length <= META_LEN) days[d] = padMeta(a).map(v => Math.max(0, Math.min(1e6, Number(v) || 0)));
     metaOther[dev] = { label: typeof m.label === 'string' ? m.label.slice(0, 40) : 'Other device', at, days };
   }
   store.set(K.metaOther, metaOther);
@@ -2860,16 +2880,16 @@ function trackingCardEl(){
   const tot = new Array(META_LEN).fill(0), perDev = [];
   for (const dv of devices) {
     let t = 0;
-    for (const [d, a] of Object.entries(dv.days)) if (d >= from) { a.forEach((v, i) => { tot[i] += v; }); t += a.slice(0, 6).reduce((x, y) => x + y, 0); }
+    for (const [d, a] of Object.entries(dv.days)) if (d >= from) { a.forEach((v, i) => { tot[i] += v; }); t += appSecs(a); }
     perDev.push({ ...dv, t });
   }
-  const app = tot.slice(0, 6).reduce((x, y) => x + y, 0), tracked = trackedMs(from);
+  const app = appSecs(tot), tracked = trackedMs(from);
   const seg = el('div', { class:'seg', role:'radiogroup', 'aria-label':'Range', style:'margin:0 0 12px' }, [['today', 'Today'], ['7d', '7 days'], ['30d', '30 days']].map(([k, t]) =>
     el('button', { type:'button', role:'radio', 'aria-checked': String(metaRange === k), text:t, onclick: () => { metaRange = k; card.replaceWith(trackingCardEl()); } })));
   const pct = tracked ? app * 1000 / tracked * 100 : null;
   const bars = el('div', { class:'bars' });
-  const maxS = Math.max(1, ...tot.slice(0, 6));
-  META_SCREENS.forEach(([, name], i) => {
+  const maxS = Math.max(1, ...META_SCREENS.map(x => tot[x[2]]));
+  META_SCREENS.forEach(([, name, i]) => {
     if (!tot[i]) return;
     const fill = el('div', { class:'fill' }); fill.style.width = `${tot[i] / maxS * 100}%`; fill.style.background = 'var(--go)';
     bars.append(el('div', { class:'bar' }, el('div', { class:'bar-top' }, el('span', { class:'bar-name', text:name }), el('span', { class:'bar-time', text: fmtSec(tot[i]) })),
@@ -2887,6 +2907,200 @@ function trackingCardEl(){
     el('p', { class:'sum-sub', style:'margin:6px 0 0', text: perDev.map(d => `${d.label} ${fmtSec(d.t)}${d.mine ? '' : ` (as of ${fmtD(new Date(d.at))})`}`).join(' · ') }),
     el('p', { class:'hint', style:'margin:10px 0 0', text:"Counted only while Chronologic is on screen and you've touched it in the last minute. Other devices' numbers arrive with Send to phone / Copy plans. Stays on your devices; nothing is sent to Clockify." }));
   return card;
+}
+
+// ---------- logs: things you count yourself (books, movies...), outside Clockify; local only, 0 requests ----------
+// Every list and item has its own id and change time, so devices merge entry by entry; deletes are kept as markers.
+const LOG_SEEDS = [['seed-books', 'Books finished'], ['seed-movies-family', 'Movies: Family'], ['seed-movies-self', 'Movies: Self']];
+function seedLogs(){ return { lists: LOG_SEEDS.map(([id, name]) => ({ id, name, goal:null, base:null, at:0 })), items:[] }; }   // fixed ids: every device seeds the same lists
+let logs = store.get(K.logs, null) || seedLogs();
+let logFocus = null, logYear = new Date().getFullYear(), logQuery = '';
+const liveLists = () => logs.lists.filter(l => !l.del);
+const itemsOf = id => logs.items.filter(i => i.list === id && !i.del);
+function saveLogs(){ store.set(K.logs, logs); try { navigator.storage?.persist?.(); } catch {} }
+const thisYear = () => new Date().getFullYear();
+function logYearCount(l, y){
+  const its = itemsOf(l.id).filter(i => i.date.slice(0, 4) === String(y));
+  const b = l.base && l.base.through.slice(0, 4) === String(y) ? l.base : null;
+  return b ? b.n + its.filter(i => i.date > b.through).length : its.length;
+}
+function logPeriodCount(l, per){
+  const t = ymd(new Date());
+  if (per === 'year') return logYearCount(l, thisYear());
+  const from = per === 'month' ? t.slice(0, 8) + '01' : weekOf(t);
+  return itemsOf(l.id).filter(i => i.date >= from && i.date <= t).length;
+}
+const logGoalText = l => l.goal ? `${logPeriodCount(l, l.goal.per)} of ${l.goal.n} this ${l.goal.per}` : '';
+const stars = n => n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
+
+function renderLogs(){
+  const box = $('logs');
+  const l = logFocus && liveLists().find(x => x.id === logFocus);
+  if (l) { renderLogPage(l); return; }
+  logFocus = null;
+  const out = [el('div', { class:'logs-head' }, el('h2', { text:'Logs', style:'margin:0' }),
+    el('p', { class:'hint', style:'margin:4px 0 0', text:'Things you count yourself. Separate from Clockify and Counts; saved only on your devices.' }))];
+  for (const [i, x] of liveLists().entries()) out.push(logCard(x, i));
+  out.push(el('div', { class:'btns', style:'margin-top:14px;justify-content:center' },
+    el('button', { class:'btn', type:'button', text:'+ New log', onclick: () => logListDialog(null) })));
+  out.push(el('p', { class:'hint', style:'margin-top:14px;text-align:center', text:'Logs travel with Send to phone, Copy plans and Save file (Plan tab). Entries from both devices are merged, so nothing is overwritten.' }));
+  box.replaceChildren(...out);
+}
+function logCard(l, i){
+  const col = CPAL[(i + 4) % CPAL.length], y = logYearCount(l, thisYear()), last = itemsOf(l.id).sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at)[0];
+  const dot = el('span', { class:'dot' }); dot.style.background = col;
+  const open = () => { logFocus = l.id; logQuery = ''; logYear = thisYear(); renderLogs(); window.scrollTo({ top:0 }); };
+  const sub = [l.goal?.per === 'month' ? null : `${logPeriodCount(l, 'month')} this month`, logGoalText(l), last ? `Last: ${last.title || 'Untitled'} (${fmtD(parseYmd(last.date))})` : 'Nothing logged yet'].filter(Boolean).join(' · ');
+  return el('div', { class:'card ccard tap', role:'button', tabindex:'0', 'aria-label':`${l.name}: ${y} this year. Open`,
+      onclick: open, onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); open(); } } },
+    el('div', { class:'ccard-top' }, dot,
+      el('div', { class:'label' }, el('div', { class:'title', text:l.name }), el('div', { class:'meta', text: sub })),
+      el('div', { class:'ccount' }, el('b', { text:String(y) }), el('span', { class:'sum-sub', text:'this year' })),
+      el('button', { class:'log-add', type:'button', text:'+', 'aria-label':`Log a new ${l.name} entry`, title:'Add an entry', onclick: e => { e.stopPropagation(); logItemDialog(l, null); } })),
+    logMonthBars(l, thisYear(), col));
+}
+function logMonthBars(l, y, col){
+  const per = new Array(12).fill(0);
+  for (const it of itemsOf(l.id)) if (it.date.slice(0, 4) === String(y)) per[+it.date.slice(5, 7) - 1]++;
+  const max = Math.max(1, ...per), W = 120, H = 34, now = new Date();
+  const chart = svg('svg', { class:'cbars', viewBox:`0 0 ${W} ${H}`, preserveAspectRatio:'none', role:'img', 'aria-label':`${l.name} per month in ${y}`, style:'height:34px' });
+  per.forEach((v, m) => {
+    const h = v / max * (H - 2), future = y === now.getFullYear() && m > now.getMonth();
+    chart.append(svg('rect', { x: m * 10 + 1.5, y: H - Math.max(h, 0.8), width:7, height: Math.max(h, 0.8), rx:1, style:`fill:${v ? col : 'var(--line)'}${future ? ';opacity:.4' : ''}` },
+      svg('title', { text:`${fmtD(new Date(y, m, 1), { month:'long' })}: ${v}` })));
+  });
+  return el('div', { class:'cbar-wrap' }, chart, el('div', { class:'cbar-axis lm-axis' }, [...'JFMAMJJASOND'].map(c => el('span', { text:c }))));
+}
+function renderLogPage(l){
+  const box = $('logs'), i = liveLists().indexOf(l), col = CPAL[(i + 4) % CPAL.length], all = itemsOf(l.id);
+  const dot = el('span', { class:'dot' }); dot.style.background = col;
+  const head = el('div', { class:'cpage-head' },
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'All logs', text:'‹', onclick: () => { logFocus = null; renderLogs(); } }),
+    el('div', { class:'label' }, el('div', { class:'cpage-name' }, dot, el('span', { text:l.name })),
+      el('div', { class:'sum-sub', style:'text-align:left', text: l.goal ? `Goal ${l.goal.n}+ a ${l.goal.per}` : 'No goal' })),
+    el('button', { class:'btn', type:'button', text:'Edit', onclick: () => logListDialog(l) }));
+  const y = logYearCount(l, thisYear()), allTime = all.length + (l.base ? l.base.n : 0);
+  const scores = el('div', { class:'scores' },
+    scoreEl('This year', String(y), l.base && l.base.through.slice(0, 4) === String(thisYear()) ? `incl. ${l.base.n} before ${fmtD(addDays(parseYmd(l.base.through), 1))}` : ''),
+    scoreEl('This month', String(logPeriodCount(l, 'month')), l.goal ? logGoalText(l) : ''),
+    scoreEl('All time', String(allTime), all.length ? `since ${fmtD(parseYmd(all.map(x => x.date).sort()[0]), { month:'short', year:'numeric' })}` : ''));
+  const years = [...new Set(all.map(x => +x.date.slice(0, 4)).concat(thisYear()))].sort();
+  const yHead = el('div', { class:'sum-head' },
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'Previous year', text:'‹', disabled: logYear <= years[0] ? '' : null, onclick: () => { logYear--; renderLogs(); } }),
+    el('div', { class:'sum-title', text:`${logYear}: ${logYearCount(l, logYear)}` }),
+    el('button', { class:'icon-btn nav', type:'button', 'aria-label':'Next year', text:'›', disabled: logYear >= thisYear() ? '' : null, onclick: () => { logYear++; renderLogs(); } }));
+  const q = el('input', { class:'search', type:'search', placeholder:'Search titles and notes', value: logQuery, 'aria-label':'Search this log', autocomplete:'off' });
+  const listBox = el('div');
+  const drawList = () => {
+    const words = logQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    const its = all.filter(x => words.every(w => `${x.title} ${x.note}`.toLowerCase().includes(w))).sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
+    if (!its.length) { listBox.replaceChildren(el('div', { class:'empty', style:'padding:20px', text: all.length ? 'Nothing matches.' : 'Nothing logged yet. Tap "+ Add" to log your first one.' })); return; }
+    const groups = new Map();
+    for (const x of its) { const k = x.date.slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+    listBox.replaceChildren(...[...groups].map(([k, xs]) => el('section', {},
+      el('h2', { text:`${fmtD(parseYmd(k + '-01'), { month:'long', year:'numeric' })} · ${xs.length}` }),
+      el('div', { class:'results', style:'margin-top:0' }, xs.map(x => el('button', { class:'row', type:'button', onclick: () => logItemDialog(l, x) },
+        el('span', { class:'label' }, el('div', { class:'title', text: x.title || 'Untitled' }),
+          el('div', { class:'meta', text: [fmtD(parseYmd(x.date), { weekday:'short', month:'short', day:'numeric' }), stars(x.rating), x.note].filter(Boolean).join(' · ') }))))))));
+  };
+  q.addEventListener('input', () => { logQuery = q.value.trim(); drawList(); });
+  box.replaceChildren(head, scores,
+    el('div', { class:'card' }, yHead, logMonthBars(l, logYear, col)),
+    el('div', { class:'searchbar', style:'margin-top:14px' }, q, el('button', { class:'btn primary', type:'button', text:'+ Add', onclick: () => logItemDialog(l, null) })),
+    listBox);
+  drawList();
+}
+function logItemDialog(l, item){
+  const title = el('input', { type:'text', id:'lTitle', maxlength:'200', autocomplete:'off', value: item?.title || '', list:'lTitles', placeholder:'e.g. Project Hail Mary' });
+  const titles = el('datalist', { id:'lTitles' }, [...new Set(itemsOf(l.id).map(x => x.title).filter(Boolean))].sort().map(t => el('option', { value:t })));
+  const date = el('input', { type:'date', id:'lDate', value: item?.date || ymd(new Date()) });
+  let rating = item?.rating || 0;
+  const starBox = el('div', { class:'log-stars', role:'radiogroup', 'aria-label':'Rating' });
+  const drawStars = () => starBox.replaceChildren(...[1, 2, 3, 4, 5].map(n => el('button', { type:'button', role:'radio', 'aria-checked': String(rating === n), 'aria-label':`${n} star${n === 1 ? '' : 's'}`,
+    class: n <= rating ? 'on' : '', text:'★', onclick: () => { rating = rating === n ? 0 : n; drawStars(); } })));
+  const note = el('textarea', { id:'lNote', maxlength:'1000', rows:'2', placeholder:'Optional' }); note.value = item?.note || '';
+  const save = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value)) { toast('Pick a date', true); return; }
+    const now = Date.now(), fields = { date: date.value, title: title.value.trim().slice(0, 200), rating, note: note.value.trim().slice(0, 1000), at: now };
+    if (item) Object.assign(item, fields); else logs.items.push({ id: newId(), list: l.id, ...fields });
+    saveLogs(); dlg.close(); toast(item ? 'Saved' : `Logged ${fields.title ? `"${fields.title}"` : l.name}`); renderLogs();
+  };
+  title.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  const dlg = openDialog(item ? 'Edit entry' : `Log: ${l.name}`,
+    el('div', { class:'field', style:'margin-top:0' }, el('label', { for:'lTitle', text:'Title (optional)' }), title, titles),
+    el('div', { class:'field' }, el('label', { for:'lDate', text:'Date finished' }), date),
+    el('div', { class:'field' }, el('span', { text:'Rating (optional; tap again to clear)' }), starBox),
+    el('div', { class:'field' }, el('label', { for:'lNote', text:'Note' }), note),
+    el('div', { class:'btns' },
+      el('button', { class:'btn primary', type:'button', text:'Save', onclick: save }),
+      el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() }),
+      item ? el('button', { class:'btn danger', type:'button', text:'Delete', onclick: () => {
+        if (!confirm(`Delete "${item.title || 'this entry'}"?`)) return;
+        Object.assign(item, { del:true, title:'', note:'', rating:0, at: Date.now() }); saveLogs(); dlg.close(); renderLogs(); } }) : null));
+  drawStars(); title.focus();
+}
+function logListDialog(l){
+  const name = el('input', { type:'text', id:'llName', maxlength:'60', autocomplete:'off', value: l?.name || '', placeholder:'e.g. TV seasons finished' });
+  const sel = (id, opts, val) => { const x = el('select', { id }); for (const [v, t] of opts) x.append(el('option', { value:v, text:t })); x.value = val; return x; };
+  const gk = sel('llGoal', [['', 'No goal'], ['min', 'At least']], l?.goal ? 'min' : '');
+  const gn = el('input', { type:'number', id:'llGoalN', min:'1', max:'999', value: String(l?.goal?.n || 2) });
+  const gp = sel('llGoalPer', [['week', 'per week'], ['month', 'per month'], ['year', 'per year']], l?.goal?.per || 'month');
+  const syncGoal = () => { gn.disabled = gp.disabled = !gk.value; }; gk.addEventListener('change', syncGoal);
+  const bn = el('input', { type:'number', id:'llBaseN', min:'0', max:'99999', value: l?.base ? String(l.base.n) : '', placeholder:'0' });
+  const bd = el('input', { type:'date', id:'llBaseD', value: l?.base?.through || ymd(new Date()), max: ymd(new Date()) });
+  const save = () => {
+    const nm = name.value.trim();
+    if (!nm) { toast('Give the log a name', true); name.focus(); return; }
+    const fields = { name: nm.slice(0, 60), goal: gk.value ? { kind:'min', n: Math.max(1, Math.round(+gn.value || 1)), per: gp.value } : null,
+      base: bn.value !== '' && +bn.value > 0 && bd.value ? { n: Math.round(+bn.value), through: bd.value } : null, at: Date.now() };
+    if (l) Object.assign(l, fields); else logs.lists.push({ id: newId(), ...fields });
+    saveLogs(); dlg.close(); renderLogs();
+  };
+  const dlg = openDialog(l ? `Edit ${l.name}` : 'New log',
+    el('div', { class:'field', style:'margin-top:0' }, el('label', { for:'llName', text:'Name' }), name),
+    el('div', { class:'times-row' }, el('div', { class:'field' }, el('label', { for:'llGoal', text:'Goal' }), gk),
+      el('div', { class:'field' }, el('label', { for:'llGoalN', text:'How many' }), gn), el('div', { class:'field' }, el('label', { for:'llGoalPer', text:'Per' }), gp)),
+    el('div', { class:'times-row' },
+      el('div', { class:'field' }, el('label', { for:'llBaseN', text:'Count so far this year' }), bn),
+      el('div', { class:'field' }, el('label', { for:'llBaseD', text:'As of (including)' }), bd)),
+    el('p', { class:'hint', style:'margin:0', text:'Optional: for ones you finished before you started logging here. New entries after that date are added to it.' }),
+    el('div', { class:'btns', style:'margin-top:12px' },
+      el('button', { class:'btn primary', type:'button', text:'Save', onclick: save }),
+      el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() }),
+      l ? el('button', { class:'btn danger', type:'button', text:'Delete log', onclick: () => {
+        const n = itemsOf(l.id).length;
+        if (!confirm(`Delete the ${l.name} log${n ? ` and its ${n} entries` : ''}?`)) return;
+        const now = Date.now(); Object.assign(l, { del:true, at:now });
+        for (const it of itemsOf(l.id)) Object.assign(it, { del:true, title:'', note:'', rating:0, at:now });
+        saveLogs(); dlg.close(); logFocus = null; renderLogs(); } }) : null));
+  syncGoal(); if (!l) name.focus();
+}
+// QR links carry all lists plus items changed in the last `days` days (merging per item makes a partial set safe).
+function logsExport(days){
+  if (days == null) return logs;
+  const cut = Date.now() - days * DAY;
+  return { lists: logs.lists, items: days ? logs.items.filter(i => i.at >= cut) : [] };
+}
+function importLogs(o){
+  if (!o || typeof o !== 'object') return 0;
+  const idOk = v => typeof v === 'string' && /^[\w-]{1,40}$/.test(v), str = (v, len) => typeof v === 'string' ? v.slice(0, len) : '';
+  let n = 0;
+  const merge = (mine, theirs, clean) => {
+    if (!Array.isArray(theirs)) return;
+    for (const x of theirs.slice(0, 20000)) {
+      const c = x && idOk(x.id) ? clean(x) : null; if (!c) continue;
+      const i = mine.findIndex(m => m.id === c.id);
+      if (i < 0) { mine.push(c); n++; } else if (c.at > (mine[i].at || 0)) { mine[i] = c; n++; }   // newer change wins, per entry
+    }
+  };
+  merge(logs.lists, o.lists, x => str(x.name, 60) ? { id:x.id, name: str(x.name, 60), at: Number(x.at) || 0, del: !!x.del,
+    goal: x.goal && Number(x.goal.n) > 0 ? { kind:'min', n: Math.min(999, Math.round(+x.goal.n)), per: ['week', 'month', 'year'].includes(x.goal.per) ? x.goal.per : 'month' } : null,
+    base: x.base && /^\d{4}-\d{2}-\d{2}$/.test(x.base.through) && Number(x.base.n) > 0 ? { n: Math.min(99999, Math.round(+x.base.n)), through: x.base.through } : null } : null);
+  merge(logs.items, o.items, x => idOk(x.list) && /^\d{4}-\d{2}-\d{2}$/.test(x.date) ? { id:x.id, list:x.list, date:x.date, title: str(x.title, 200), note: str(x.note, 1000),
+    rating: Math.max(0, Math.min(5, Math.round(Number(x.rating) || 0))), at: Number(x.at) || 0, del: !!x.del } : null);
+  saveLogs();
+  if (view === 'logs') renderLogs();
+  return n;
 }
 
 // ---------- boot ----------
