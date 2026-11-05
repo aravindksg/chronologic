@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Security: only Clockify's API and this page's own server can be contacted; no outside scripts, fonts or images can load.
      'self' is Atlas on the Mac mini when Atlas serves the page (sync); on GitHub Pages it is a static host that accepts no data. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.clockify.me 'self'; worker-src 'self'; manifest-src 'self'; img-src data: 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.clockify.me 'self'; worker-src 'self'; manifest-src 'self'; img-src data: 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EEF1F4" media="(prefers-color-scheme: light)">
@@ -90,6 +90,7 @@ h2{font-size:14px;font-weight:600;color:var(--muted);margin:22px 4px 8px}
 .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
   background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm);font-size:14px;max-width:calc(100% - 32px);
   opacity:0;pointer-events:none;transition:opacity .2s}
+.toast{z-index:7}
 .toast.show{opacity:1}
 .toast.error{background:var(--danger);color:#fff}
 .toast.has-link{pointer-events:auto}
@@ -211,6 +212,11 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:none;padding:8px 4px 10px;cursor:pointer;color:var(--muted);font-size:12px}
 .nav-btn:hover{color:var(--ink)}
 .nav-btn[aria-current="page"]{color:var(--go);font-weight:600}
+.tabbar-in.seven .nav-btn{min-width:0;padding:8px 1px 10px}
+@media (max-width:430px){ .tabbar-in.seven .nav-btn{font-size:11px} }
+/* Train: Kinesis (served by Atlas) in a same-origin frame, so moving between tabs never reloads either page */
+#train{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);bottom:var(--tabh,64px);z-index:5;background:var(--bg)}
+#train iframe{display:block;width:100%;height:100%;border:0}
 .task-focus{text-align:center;padding:10px 0 4px}
 .task-name{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:17px;max-width:100%}
 .task-name span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -471,10 +477,12 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
   <div id="plan" class="hidden"></div>
   <div id="logs" class="hidden"></div>
 </div>
+<div id="train" class="hidden"></div>
 <nav class="tabbar" aria-label="Main">
   <div class="tabbar-in">
     <button class="nav-btn" type="button" id="navTimer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg><span>Timer</span></button>
     <button class="nav-btn" type="button" id="navSearch"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span>Search</span></button>
+    <button class="nav-btn hidden" type="button" id="navTrain"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></svg><span>Train</span></button>
     <button class="nav-btn" type="button" id="navPlan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h4"/></svg><span>Plan</span></button>
     <button class="nav-btn" type="button" id="navLogs"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7h6M9 11h4"/></svg><span>Logs</span></button>
     <button class="nav-btn" type="button" id="navSummary"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Summary</span></button>
@@ -489,7 +497,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
   plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
-  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas' };
+  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas', kinDays:'qt.kinDays', kinGym:'qt.kinGym' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -517,6 +525,7 @@ let calls = store.get(K.calls, []), backoffUntil = store.get(K.backoff, 0);
 let lastSync = 0, lastSyncTry = 0, syncing = false;
 let busy = false, query = '', activeIdx = 0, resultItems = [];
 let projectsById = new Map();
+let kinDays = store.get(K.kinDays, null);   // { at, days:{ date:{ sets, min } } } from Kinesis on Atlas, for counters
 let workoutUrl = store.get(K.workoutUrl, '');  // Pocket Coach workout page; per device, never in the public repo
 
 // ---------- helpers ----------
@@ -556,6 +565,7 @@ function cleanWorkoutUrl(v){
   try { const u = new URL(v); if (u.protocol !== 'https:' || u.username || u.password) return null; u.search = ''; u.hash = ''; return u.href; }
   catch { return null; }
 }
+const inApp = href => ATLAS && href.startsWith(`${location.origin}/`);   // opens in the Train tab, not a new window
 function workoutHref(mode){
   if (!workoutUrl || !running) return null;
   const u = new URL(workoutUrl);
@@ -702,7 +712,7 @@ async function start(p, t){
     recent = [{ p:p.id, t:t?.id || null }, ...recent.filter(r => !(r.p === p.id && r.t === (t?.id || null)))].slice(0, 8);
     store.set(K.recent, recent);
     const wk = isFitness(running) ? workoutHref('timer') : null;
-    toast(`Started ${t ? t.name : p.name}`, false, wk && { text:'Open workout ↗', href:wk });
+    toast(`Started ${t ? t.name : p.name}`, false, wk && { text: inApp(wk) ? 'Open workout' : 'Open workout ↗', href:wk });
     query = ''; $('search').value = ''; $('search').blur();
   } catch (err) { handleError(err); }
   finally { busy = false; document.body.style.cursor = ''; renderAll(); }
@@ -752,7 +762,7 @@ function renderRunning(){
   }
   const wk = isFitness(running) ? workoutHref('button') : null, wl = $('workoutLink');
   wl.classList.toggle('hidden', !wk);
-  if (wk) wl.href = wk;
+  if (wk) { wl.href = wk; wl.textContent = inApp(wk) ? 'Log workout' : 'Log workout ↗'; }
   tick();
 }
 function tick(){
@@ -1077,7 +1087,7 @@ $('forgetBtn').addEventListener('click', () => {
   if (!confirm(ATLAS ? 'Remove the API key and everything Chronologic saved in this browser? Plans, counters and logs stay on Atlas and come back when you reconnect.' : 'Remove the API key, cached projects, your plans, counters and LOGS (books, movies…) from this browser? Logs exist only on your devices. Use Save file in the Plan tab first to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; planTplAt = {}; atlasSt = { cursor:0, mark:0, at:0, err:'' }; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; workoutUrl = ''; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; planTplAt = {}; atlasSt = { cursor:0, mark:0, at:0, err:'' }; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; workoutUrl = ''; kinDays = null; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -1499,8 +1509,9 @@ function setView(v){
   const sumV = v === 'summary', planV = v === 'plan', timerV = v === 'timer', logsV = v === 'logs';
   $('timerBar').classList.toggle('hidden', !timerV); $('summaryBar').classList.toggle('hidden', !sumV);
   $('list').classList.toggle('hidden', !timerV); $('summary').classList.toggle('hidden', !sumV); $('plan').classList.toggle('hidden', !planV);
-  $('logs').classList.toggle('hidden', !logsV);
+  $('logs').classList.toggle('hidden', !logsV); $('train').classList.toggle('hidden', v !== 'train');
   $('create').classList.add('hidden'); $('settings').classList.add('hidden');
+  if (v === 'train') { trainOpen(); updateNav(); return; }
   if (sumV) { loadSummary(); window.scrollTo({ top:0 }); }
   else if (planV) { if (was !== 'plan') plan.date = ymd(new Date()); plan.jump = true; renderPlan(); window.scrollTo({ top:0 }); }
   else if (logsV) { if (was !== 'logs') logFocus = null; renderLogs(); window.scrollTo({ top:0 }); }
@@ -1509,8 +1520,8 @@ function setView(v){
 }
 function updateNav(){
   const settingsOpen = !$('settings').classList.contains('hidden');
-  const cur = view === 'summary' ? 'navSummary' : view === 'plan' ? 'navPlan' : view === 'logs' ? 'navLogs' : settingsOpen ? 'navSettings' : 'navTimer';
-  for (const id of ['navTimer','navSearch','navPlan','navLogs','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
+  const cur = view === 'summary' ? 'navSummary' : view === 'plan' ? 'navPlan' : view === 'logs' ? 'navLogs' : view === 'train' ? 'navTrain' : settingsOpen ? 'navSettings' : 'navTimer';
+  for (const id of ['navTimer','navSearch','navTrain','navPlan','navLogs','navSummary','navSettings']) { if (id === cur) $(id).setAttribute('aria-current', 'page'); else $(id).removeAttribute('aria-current'); }
 }
 function toTimer(){ if (view !== 'timer') setView('timer'); showSettings(false); closeCreate(); window.scrollTo({ top:0 }); }
 $('navTimer').addEventListener('click', toTimer);
@@ -1518,6 +1529,7 @@ $('navSearch').addEventListener('click', () => { toTimer(); $('search').focus();
 $('navSummary').addEventListener('click', () => setView('summary'));
 $('navPlan').addEventListener('click', () => setView('plan'));
 $('navLogs').addEventListener('click', () => setView('logs'));
+$('navTrain').addEventListener('click', () => setView('train'));
 $('navSettings').addEventListener('click', () => {
   if (view !== 'timer') setView('timer');
   const open = $('settings').classList.contains('hidden');
@@ -2392,7 +2404,7 @@ function cleanCounters(o){
     mode: c.mode === 'sessions' ? 'sessions' : 'days', min: int(c.min, 0, 1440),
     goal: c.goal && Number(c.goal.n) > 0 ? { kind: c.goal.kind === 'max' ? 'max' : 'min', n: int(c.goal.n, 1, 999), per: c.goal.per === 'month' ? 'month' : 'week' } : null,
     base: c.base && /^\d{4}-\d{2}-\d{2}$/.test(c.base.through) ? { n: int(c.base.n, 0, 99999), through: c.base.through } : null,
-    pin: !!c.pin }));
+    pin: !!c.pin, kin: !!c.kin }));
   return { at: Number(o.at) || 0, list };
 }
 function saveCounters(){ counters.at = Date.now(); store.set(K.counters, counters); atlasSoon(); }
@@ -2455,6 +2467,17 @@ function counterMatches(c){
   const xs = counts.list.filter(x => hit(x[2], x[3], tn(x[3]))).map(x => ({ s: x[0] * 60000, e: x[1] * 60000 }));
   if (running && hit(running.projectId || 'none', running.taskId || 'none', running.tName) && !xs.some(x => Math.abs(x.s - running.start) < 60000))
     xs.push({ s: running.start, e: Date.now() });
+  // "Also count logged workouts": a day with a Kinesis workout counts even if the timer wasn't run (or ran short).
+  // Added as a block at noon covering whatever the day still needs to reach the minimum.
+  if (c.kin && c.mode === 'days' && kinDays?.days) {
+    const have = counterDayMs(xs), need = Math.max(c.min * 60000, 60000);
+    for (const [d, k] of Object.entries(kinDays.days)) {
+      const ms = have.get(d) || 0;
+      if (ms >= need) continue;
+      const s = +parseYmd(d) + 12 * 3600000;
+      xs.push({ s, e: s + Math.max(k.min * 60000, need - ms, 60000), kin: true });
+    }
+  }
   return xs.sort((x, y) => x.s - y.s);
 }
 function counterEvents(c, xs = counterMatches(c)){
@@ -2517,6 +2540,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function ruleText(c){
   const m = c.min ? dur(c.min * 60000) : '';
   const parts = [c.mode === 'days' ? (m ? `Days with ${m}+` : 'Days') : (m ? `Sessions of ${m}+` : 'Sessions')];
+  if (c.kin && c.mode === 'days') parts[0] += ' or a logged workout';
   if (c.goal) parts.push(c.goal.kind === 'max' ? `At most ${c.goal.n} a ${c.goal.per}` : `Goal ${c.goal.n}+ a ${c.goal.per}`);
   return parts.join(' · ');
 }
@@ -2817,6 +2841,10 @@ function counterDialog(c){
   const bn = el('input', { type:'number', id:'cBaseN', min:'0', max:'99999', value: ed.base ? String(ed.base.n) : '', placeholder:'None' });
   const bd = el('input', { type:'date', id:'cBaseD', value: ed.base?.through || ymd(new Date()), max: ymd(new Date()) });
   const pin = el('input', { type:'checkbox' }); pin.checked = !!ed.pin;
+  const kin = el('input', { type:'checkbox' }); kin.checked = !!ed.kin;
+  const kinRow = ATLAS ? el('label', { class:'check' }, kin, 'Also count days with a logged workout (Kinesis)') : null;
+  const syncKin = () => kinRow?.classList.toggle('hidden', mode.value !== 'days');
+  mode.addEventListener('change', syncKin);
   const save = () => {
     ed.name = name.value.trim();
     if (!ed.name) { toast('Give the counter a name', true); name.focus(); return; }
@@ -2824,6 +2852,8 @@ function counterDialog(c){
     ed.goal = gk.value ? { kind: gk.value, n: Math.max(1, Math.round(+gn.value || 1)), per: gp.value } : null;
     ed.base = bn.value !== '' && bd.value ? { n: Math.max(0, Math.round(+bn.value)), through: bd.value } : null;
     ed.pin = pin.checked;
+    if (ATLAS) ed.kin = kin.checked && ed.mode === 'days';
+    if (ed.kin) kinFetch(true);
     const i = counters.list.findIndex(x => x.id === ed.id);
     if (i >= 0) counters.list[i] = ed; else counters.list.push(ed);
     saveCounters(); dlg.close(); renderCounts(); renderList();
@@ -2839,6 +2869,7 @@ function counterDialog(c){
       el('div', { class:'field' }, el('label', { for:'cBaseN', text:'Count so far this year' }), bn),
       el('div', { class:'field' }, el('label', { for:'cBaseD', text:'As of (including)' }), bd)),
     el('p', { class:'hint', style:'margin:0', text:'Starting count is optional: use it when earlier times were not tracked this way. Later instances are added to it.' }),
+    kinRow,
     el('label', { class:'check' }, pin, 'Show on the Timer tab'),
     el('div', { class:'btns', style:'margin-top:12px' },
       el('button', { class:'btn primary', type:'button', text:'Save', onclick: save }),
@@ -2846,15 +2877,15 @@ function counterDialog(c){
       c ? el('button', { class:'btn danger', type:'button', text:'Delete', onclick: () => {
         if (!confirm(`Delete the ${c.name} counter? Your Clockify entries are not affected.`)) return;
         counters.list = counters.list.filter(x => x.id !== c.id); saveCounters(); dlg.close(); renderCounts(); renderList(); } }) : null));
-  drawChosen(); drawPick(); syncGoal(); if (!c) name.focus();
+  drawChosen(); drawPick(); syncGoal(); syncKin(); if (!c) name.focus();
 }
 
 // ---------- tracking itself: time spent in this app (local only, 0 requests) ----------
 // Counted while the app is on screen and you touched, clicked, typed or scrolled in the last 60 seconds.
 // Day record: [seconds on Timer, Search, Plan, Summary, Counts, Settings, starts, switches, stops, creates, plan edits, opens, time-to-start seconds, time-to-start count]
-// [key, label, slot in the day array]; Logs was added later at the end so older records stay valid.
-const META_SCREENS = [['timer', 'Timer', 0], ['search', 'Search', 1], ['plan', 'Plan', 2], ['logs', 'Logs', 14], ['summary', 'Summary', 3], ['counts', 'Counts', 4], ['settings', 'Settings', 5]];
-const MI = { starts:6, switches:7, stops:8, creates:9, edits:10, opens:11, ttsSum:12, ttsN:13 }, META_LEN = 15, IDLE = 60000;
+// [key, label, slot in the day array]; Logs (14) and Train (15) were added later at the end so older records stay valid.
+const META_SCREENS = [['timer', 'Timer', 0], ['search', 'Search', 1], ['train', 'Train', 15], ['plan', 'Plan', 2], ['logs', 'Logs', 14], ['summary', 'Summary', 3], ['counts', 'Counts', 4], ['settings', 'Settings', 5]];
+const MI = { starts:6, switches:7, stops:8, creates:9, edits:10, opens:11, ttsSum:12, ttsN:13 }, META_LEN = 16, IDLE = 60000;
 const padMeta = a => a.length < META_LEN ? a.concat(new Array(META_LEN - a.length).fill(0)) : a;
 const appSecs = a => META_SCREENS.reduce((t, x) => t + (a[x[2]] || 0), 0);
 function deviceLabel(){
@@ -2879,6 +2910,7 @@ function screenNow(){
   if (view === 'summary') return sum.kind === 'counts' ? 4 : 3;
   if (view === 'plan') return 2;
   if (view === 'logs') return 14;
+  if (view === 'train') return 15;
   return query || document.activeElement === $('search') ? 1 : 0;
 }
 function metaTick(){
@@ -3205,7 +3237,7 @@ async function atlasSync(keepalive){
     for (let more = true, first = true; more; first = false) {
       const r = await fetch('/api/atlas/sync', { method:'POST', cache:'no-store', referrerPolicy:'no-referrer', keepalive: !!keepalive && first,
         headers:{ 'Content-Type':'application/json', 'X-Atlas':'1' },
-        body: JSON.stringify({ profile_id:'me', device: meta.dev, cursor, push: first ? push : [] }) });
+        body: JSON.stringify({ profile_id:'me', device: meta.dev, cursor, push: first ? push : [], kinds:['chrono.', 'ledger.'] }) });
       if (!r.ok) throw new Error(`Atlas answered ${r.status}`);
       const o = await r.json();
       pulled.push(...(o.pull || [])); rejected.push(...(o.rejected || []));
@@ -3215,6 +3247,7 @@ async function atlasSync(keepalive){
     let changed = 0; try { changed = atlasApply(pulled); } finally { atlasQuiet = false; }
     atlasSt = { cursor, mark, at: Date.now(), err: rejected.length ? `${plural(rejected.length, 'change')} not saved on Atlas (${rejected[0].reason})` : '' };
     if (changed) atlasRefresh();
+    kinGymOnce(); kinFetch();
   } catch {
     atlasSt.err = navigator.onLine === false ? 'Offline' : 'Atlas not reachable';
   } finally {
@@ -3245,7 +3278,7 @@ if (ATLAS) {
   // Installable and opens offline; manifest and worker live on Atlas, not in the public repo.
   document.head.append(el('link', { rel:'manifest', href:'/chronologic/manifest.webmanifest' }));
   try { navigator.serviceWorker?.register('/chronologic/sw.js', { scope:'/chronologic/' }).catch(() => {}); } catch {}
-  if (!workoutUrl) workoutUrl = `${location.origin}/workouts/`;   // same server, so no address to type
+  if (!workoutUrl) workoutUrl = `${location.origin}/chronologic/workouts/`;   // same server, so no address to type
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { if (atlasTimer) atlasSync(true); }   // don't strand an edit made just before leaving
     else if (Date.now() - atlasSt.at > 15000) atlasSync();
@@ -3254,9 +3287,73 @@ if (ATLAS) {
   setInterval(() => { if (document.visibilityState === 'visible') atlasSync(); }, 120000);
 }
 
+// ---------- Train: Kinesis inside Chronologic (Atlas copy only; 0 Clockify requests) ----------
+// Kinesis is its own page on Atlas (/chronologic/workouts/), shown in a same-origin frame so switching
+// tabs reloads nothing: no Clockify sync, and the rest timer keeps running while you look at Timer.
+let trainFrame = null, trainNext = '', kinBusy = false;
+const TRAIN_PATH = '/chronologic/workouts/';
+function trainOpen(qs = trainNext){
+  trainNext = '';
+  if (!trainFrame) {
+    trainFrame = el('iframe', { title:'Kinesis workouts', allow:'screen-wake-lock', src: TRAIN_PATH + qs });
+    trainFrame.addEventListener('load', () => {
+      // Taps inside the frame don't reach this page, so count them for app time here.
+      try { for (const t of ['pointerdown', 'keydown', 'wheel', 'touchstart']) trainFrame.contentWindow.addEventListener(t, () => { lastActive = Date.now(); }, { passive:true, capture:true }); } catch {}
+    });
+    $('train').append(trainFrame);
+  } else if (qs) trainFrame.contentWindow.location.replace(TRAIN_PATH + qs);
+  setTabH();
+}
+function setTabH(){ document.documentElement.style.setProperty('--tabh', `${document.querySelector('.tabbar').offsetHeight}px`); }
+// Links to the workout page (toast, "Log workout") open the Train tab instead of a new window.
+function trainLink(e){
+  const a = e.target.closest?.('a[href]'); if (!a) return;
+  let u; try { u = new URL(a.href); } catch { return; }
+  if (u.origin !== location.origin || !/^\/(chronologic\/)?workouts\/?$/.test(u.pathname)) return;
+  e.preventDefault(); $('toast').classList.remove('show', 'has-link');
+  trainNext = u.search; setView('train');
+}
+// Gym days from Kinesis, for counters with "Also count logged workouts". A small local query on Atlas.
+async function kinFetch(force){
+  if (!ATLAS || kinBusy || !counters?.list.some(c => c.kin)) return;
+  if (!force && kinDays && Date.now() - kinDays.at < 60000) return;
+  kinBusy = true;
+  try {
+    const r = await fetch(`/api/kinesis/days?profile_id=me&from=${ymd(addDays(new Date(), -400))}`, { cache:'no-store', referrerPolicy:'no-referrer' });
+    if (!r.ok) return;
+    const o = await r.json(), days = {};
+    for (const [d, k] of Object.entries(o.days || {})) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && k) days[d] = { sets: Math.max(0, +k.sets || 0), min: Math.max(0, Math.min(600, +k.min || 0)) };
+    const same = kinDays && JSON.stringify(kinDays.days) === JSON.stringify(days);
+    kinDays = { at: Date.now(), days }; store.set(K.kinDays, kinDays);
+    if (!same) atlasRefresh();
+  } catch {} finally { kinBusy = false; }
+}
+// One time: the Gym counter counts logged workouts too (the user's choice). Runs after a pull, so it
+// edits the latest counters rather than racing another device's change.
+function kinGymOnce(){
+  if (store.get(K.kinGym, false) || !counters) return;
+  store.set(K.kinGym, true);
+  const g = counters.list.find(c => c.name === 'Gym' && c.mode === 'days');
+  if (g && !g.kin) { g.kin = true; saveCounters(); }
+}
+if (ATLAS) {
+  $('navTrain').classList.remove('hidden'); document.querySelector('.tabbar-in').classList.add('seven');
+  document.addEventListener('click', trainLink, true);
+  addEventListener('resize', setTabH);
+  addEventListener('message', e => { if (e.origin === location.origin && e.data?.kinesis === 'changed') kinFetch(true); });
+}
+
 // ---------- boot ----------
 indexCache(); renderAll();
 if (ATLAS) atlasSync();
+{ // ?view=train (from the old workout address or a shortcut), then drop it from the address
+  const q = new URLSearchParams(location.search), v = q.get('view');
+  if (v) {
+    q.delete('view'); history.replaceState(null, '', location.pathname + location.hash);
+    if (v === 'train' && ATLAS) { const rest = q.toString(); trainNext = rest ? `?${rest}` : ''; setView('train'); }
+    else if (['plan', 'logs', 'summary'].includes(v)) setView(v);
+  }
+}
 importFromHash();
 if (!apiKey) showSettings(true);
 else if (!cache) connect();
