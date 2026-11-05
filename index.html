@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- Security: only Clockify's API can be contacted; no outside scripts, fonts or images can load. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.clockify.me; img-src data:; base-uri 'none'; form-action 'none'">
+<!-- Security: only Clockify's API and this page's own server can be contacted; no outside scripts, fonts or images can load.
+     'self' is Atlas on the Mac mini when Atlas serves the page (sync); on GitHub Pages it is a static host that accepts no data. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.clockify.me 'self'; worker-src 'self'; manifest-src 'self'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EEF1F4" media="(prefers-color-scheme: light)">
@@ -91,6 +92,10 @@ h2{font-size:14px;font-weight:600;color:var(--muted);margin:22px 4px 8px}
   opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:1}
 .toast.error{background:var(--danger);color:#fff}
+.toast.has-link{pointer-events:auto}
+.toast a{color:inherit;font-weight:700;margin-left:8px}
+.wk-link{display:inline-block;margin-top:5px;font-size:13px;font-weight:600;color:var(--run);text-decoration:none;
+  border:1px solid currentColor;border-radius:999px;padding:3px 11px}
 :focus-visible{outline:2px solid var(--go);outline-offset:2px}
 .project-line{display:flex;align-items:stretch}
 .project-line .row{flex:1;min-width:0;padding-left:4px}
@@ -380,6 +385,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
       <div class="now-info">
         <div class="now-name" id="nowName">No timer running</div>
         <div class="now-sub" id="nowSub">Tap a project or task to start</div>
+        <a class="wk-link hidden" id="workoutLink" target="_blank" rel="noopener noreferrer">Log workout ↗</a>
       </div>
       <div class="digits" id="nowDigits">0:00:00</div>
       <button class="stop hidden" id="stopBtn">Stop</button>
@@ -415,6 +421,11 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
       <label for="wsSelect">Workspace</label>
       <select id="wsSelect"></select>
     </div>
+    <div class="field hidden" id="workoutField">
+      <label for="workoutUrl">Workout app URL (optional)</label>
+      <input id="workoutUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://…/workouts/">
+      <span class="hint" style="margin:0">Adds a Log workout link while a Body → Fitness timer runs. Saved only in this browser.</span>
+    </div>
     <div class="btns">
       <button class="btn primary" id="saveKeyBtn">Save and connect</button>
       <button class="btn hidden" id="refreshBtn">Reload projects</button>
@@ -422,6 +433,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
       <button class="btn hidden" id="closeSettingsBtn">Close</button>
     </div>
     <p id="usage" class="hidden" style="margin:14px 0 0"></p>
+    <p id="atlasLine" class="hint hidden" style="margin:10px 0 0"></p>
   </div>
 
   <div id="create" class="panel hidden">
@@ -477,7 +489,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
   plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
-  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs' };
+  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -486,6 +498,11 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   del(k){ try { localStorage.removeItem(k); } catch {} }
 };
+// Atlas (the Polarise hub on the Mac mini) serves this same file at /chronologic/; only that copy syncs. The GitHub Pages copy never does.
+const ATLAS = /^https?:$/.test(location.protocol) && !/\.github\.io$/.test(location.hostname) && location.pathname.startsWith('/chronologic/');
+let atlasSt = { cursor:0, mark:0, at:0, err:'', ...store.get(K.atlas, {}) };   // mark = local change time already pushed
+let atlasBusy = false, atlasAgain = false, atlasTimer = 0, atlasQuiet = false;
+function atlasSoon(){ if (!ATLAS || atlasQuiet) return; clearTimeout(atlasTimer); atlasTimer = setTimeout(atlasSync, 3000); }
 
 // ---------- state ----------
 let apiKey = store.get(K.key, '');
@@ -500,6 +517,7 @@ let calls = store.get(K.calls, []), backoffUntil = store.get(K.backoff, 0);
 let lastSync = 0, lastSyncTry = 0, syncing = false;
 let busy = false, query = '', activeIdx = 0, resultItems = [];
 let projectsById = new Map();
+let workoutUrl = store.get(K.workoutUrl, '');  // Pocket Coach workout page; per device, never in the public repo
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
@@ -524,9 +542,25 @@ function fmt(ms){
   return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 let toastTimer;
-function toast(msg, isError){
-  const t = $('toast'); t.textContent = msg; t.classList.toggle('error', !!isError); t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), isError ? 5000 : 2200);
+function toast(msg, isError, link){
+  const t = $('toast'); t.replaceChildren(msg);
+  if (link) t.append(el('a', { href:link.href, target:'_blank', rel:'noopener noreferrer', text:link.text, onclick: () => t.classList.remove('show', 'has-link') }));
+  t.classList.toggle('error', !!isError); t.classList.toggle('has-link', !!link); t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show', 'has-link'), link ? 8000 : isError ? 5000 : 2200);
+}
+// Workout link: plain navigation to the user's own Pocket Coach page, so it needs no CSP change and costs 0 requests.
+const isFitness = r => !!r && r.pName === 'Body' && r.tName === 'Fitness';
+function cleanWorkoutUrl(v){
+  v = String(v || '').trim();
+  if (!v) return '';
+  try { const u = new URL(v); if (u.protocol !== 'https:' || u.username || u.password) return null; u.search = ''; u.hash = ''; return u.href; }
+  catch { return null; }
+}
+function workoutHref(mode){
+  if (!workoutUrl || !running) return null;
+  const u = new URL(workoutUrl);
+  u.search = new URLSearchParams({ from:'chronologic', mode, ext: running.id || '' }).toString();
+  return u.href;
 }
 function playIcon(){
   const ns = 'http://www.w3.org/2000/svg';
@@ -667,7 +701,8 @@ async function start(p, t){
     metaStarted(!!prev);
     recent = [{ p:p.id, t:t?.id || null }, ...recent.filter(r => !(r.p === p.id && r.t === (t?.id || null)))].slice(0, 8);
     store.set(K.recent, recent);
-    toast(`Started ${t ? t.name : p.name}`);
+    const wk = isFitness(running) ? workoutHref('timer') : null;
+    toast(`Started ${t ? t.name : p.name}`, false, wk && { text:'Open workout ↗', href:wk });
     query = ''; $('search').value = ''; $('search').blur();
   } catch (err) { handleError(err); }
   finally { busy = false; document.body.style.cursor = ''; renderAll(); }
@@ -715,6 +750,9 @@ function renderRunning(){
     $('nowSub').textContent = cache ? 'Tap a project or task to start' : 'Connect Clockify to begin';
     $('stopBtn').classList.add('hidden');
   }
+  const wk = isFitness(running) ? workoutHref('button') : null, wl = $('workoutLink');
+  wl.classList.toggle('hidden', !wk);
+  if (wk) wl.href = wk;
   tick();
 }
 function tick(){
@@ -901,8 +939,10 @@ function showSettings(open){
   $('settings').classList.toggle('hidden', !open);
   const connected = !!(apiKey && cache);
   $('keyInput').value = ''; $('keyInput').placeholder = apiKey ? 'Key saved. Paste a new one to replace it.' : 'Paste your API key';
-  ['refreshBtn','forgetBtn','closeSettingsBtn','usage'].forEach(id => $(id).classList.toggle('hidden', !connected));
+  ['refreshBtn','forgetBtn','closeSettingsBtn','usage','workoutField'].forEach(id => $(id).classList.toggle('hidden', !connected));
+  $('workoutUrl').value = workoutUrl;
   if (connected) showUsage();
+  $('atlasLine').classList.toggle('hidden', !ATLAS); atlasShow();
   const wsField = $('wsField'), sel = $('wsSelect');
   if (connected && cache.workspaces.length > 1) {
     sel.replaceChildren(...cache.workspaces.map(w => { const o = el('option', { value:w.id, text:w.name }); if (w.id === cache.ws) o.selected = true; return o; }));
@@ -1027,11 +1067,17 @@ $('wsSelect').addEventListener('change', async e => {
   store.set(K.ws, e.target.value); recent = []; fav = []; tab = null; store.set(K.recent, recent); store.set(K.fav, fav); store.set(K.tab, tab);
   try { sumCache.clear(); await refreshData(true); await sync('user'); showSettings(false); } catch (err) { handleError(err); }
 });
+$('workoutUrl').addEventListener('change', e => {
+  const v = cleanWorkoutUrl(e.target.value);
+  if (v === null) { toast('Use the full https:// address of the workout page', true); return; }
+  workoutUrl = v; v ? store.set(K.workoutUrl, v) : store.del(K.workoutUrl); e.target.value = v;
+  renderRunning(); toast(v ? 'Workout link saved' : 'Workout link removed');
+});
 $('forgetBtn').addEventListener('click', () => {
-  if (!confirm('Remove the API key, cached projects, your plans, counters and LOGS (books, movies…) from this browser? Logs exist only on your devices. Use Save file in the Plan tab first to keep them.')) return;
+  if (!confirm(ATLAS ? 'Remove the API key and everything Chronologic saved in this browser? Plans, counters and logs stay on Atlas and come back when you reconnect.' : 'Remove the API key, cached projects, your plans, counters and LOGS (books, movies…) from this browser? Logs exist only on your devices. Use Save file in the Plan tab first to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; planTplAt = {}; atlasSt = { cursor:0, mark:0, at:0, err:'' }; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; workoutUrl = ''; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -1561,6 +1607,8 @@ setInterval(() => { if (running) { updateTodayCard(); refreshRowTimes(); } }, 15
 // Tracked time matches "exact" (the target) or "close" (same project, other task).
 let plans = store.get(K.plan, {});        // {'YYYY-MM-DD': {at, b:[{id, s, e, p, t, g, n, c}]}}; s/e = minutes from midnight
 let planTpl = store.get(K.planTpl, {});   // {weekday 0-6: [blocks]}
+let planTplAt = store.get(K.planTplAt, {});   // {weekday: last change}; templates saved before times existed count as oldest
+for (const w of Object.keys(planTpl)) if (!planTplAt[w]) planTplAt[w] = 1;
 let actuals = store.get(K.actual, {});    // {'YYYY-MM-DD': {ws, at, s:[[start, end, projectId, taskId, taskName, projectName, color]]}}
 const plan = { date: ymd(new Date()), drag:null, suppress:false, jump:false };
 const SLOT = 15, HOUR_PX = 64, PX_MIN = HOUR_PX / 60;
@@ -1569,7 +1617,7 @@ const fineMouse = () => matchMedia('(pointer: fine)').matches;
 const dayBlocks = d => plans[d]?.b || [];
 function savePlanDay(d, blocks){
   metaCount('edits');
-  plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans);
+  plans[d] = { at: Date.now(), b: blocks.slice().sort((x, y) => x.s - y.s) }; store.set(K.plan, plans); atlasSoon();
   try { navigator.storage?.persist?.(); } catch {}   // ask the browser not to clear saved plans when space runs low
 }
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -2017,14 +2065,14 @@ function templateDialog(d){
       el('button', { class:'btn primary', type:'button', text:'Save template', onclick: () => {
         const ws2 = boxes.map(l => l.firstChild).filter(cb => cb.checked).map(cb => +cb.value);
         if (!ws2.length) { toast('Pick at least one weekday', true); return; }
-        for (const w of ws2) planTpl[w] = dayBlocks(d).map(b => ({ ...b }));
-        store.set(K.planTpl, planTpl); dlg.close(); toast(`Template saved for ${ws2.length} weekday${ws2.length === 1 ? '' : 's'}`); renderPlan(); } }),
+        for (const w of ws2) { planTpl[w] = dayBlocks(d).map(b => ({ ...b })); planTplAt[w] = Date.now(); }
+        store.set(K.planTpl, planTpl); store.set(K.planTplAt, planTplAt); atlasSoon(); dlg.close(); toast(`Template saved for ${ws2.length} weekday${ws2.length === 1 ? '' : 's'}`); renderPlan(); } }),
       el('button', { class:'btn', type:'button', text:'Cancel', onclick: () => dlg.close() })));
 }
 
 // ----- moving plans between devices (no network: clipboard or a file) -----
 const PLAN_APP = 'chronologic-plan', PLAN_APPS = [PLAN_APP, 'quick-timer-plan'];   // older exports used the Quick Timer name
-function exportText(){ saveMeta(true); return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, counters, meta: metaExport(90), logs }); }
+function exportText(){ saveMeta(true); return JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans, templates: planTpl, templatesAt: planTplAt, counters, meta: metaExport(90), logs }); }
 function cleanBlocks(arr){
   if (!Array.isArray(arr)) return [];
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null;
@@ -2034,27 +2082,44 @@ function cleanBlocks(arr){
     .sort((a, b) => a.s - b.s);
   return out.filter((b, i) => !i || b.s >= out[i - 1].e);   // drop overlaps
 }
-function importText(txt){
-  let o; try { o = JSON.parse(txt); } catch { o = null; }
-  if (!o || !PLAN_APPS.includes(o.app) || typeof o.plans !== 'object' || !o.plans) throw new Error("That isn't a Chronologic plan export.");
-  let days = 0;
-  for (const [d, day] of Object.entries(o.plans)) {
+// Merges an export, QR link or Atlas pull. Newer change wins per plan day, template, counter set, device and log entry.
+function mergeImport(o){
+  let days = 0, n = 0;
+  if (o.plans && typeof o.plans === 'object') for (const [d, day] of Object.entries(o.plans)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !day || typeof day !== 'object') continue;
     const at = Number(day.at) || 0;
     if (plans[d] && (plans[d].at || 0) >= at) continue;   // the more recently changed day wins
     plans[d] = { at, b: cleanBlocks(day.b) }; days++;
   }
-  if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) if (Array.isArray(o.templates[w])) planTpl[w] = cleanBlocks(o.templates[w]);
-  importMeta(o.meta); const logN = importLogs(o.logs);
+  if (o.templates && typeof o.templates === 'object') for (let w = 0; w < 7; w++) {
+    if (!Array.isArray(o.templates[w])) continue;
+    const at = Number(o.templatesAt?.[w]) || 0;
+    if (o.templatesAt && (planTplAt[w] || 0) >= at) continue;   // older exports carry no times and replace templates, as before
+    planTpl[w] = cleanBlocks(o.templates[w]); planTplAt[w] = at || Date.now(); n++;
+  }
+  const before = JSON.stringify(metaOther); importMeta(o.meta); if (JSON.stringify(metaOther) !== before) n++;
+  const logN = importLogs(o.logs);
   const oc = cleanCounters(o.counters);
-  if (oc && (!counters || oc.at > (counters.at || 0))) { counters = oc; store.set(K.counters, counters); }
-  store.set(K.plan, plans); store.set(K.planTpl, planTpl); snapshotActuals();
+  if (oc && (!counters || oc.at > (counters.at || 0))) { counters = oc; store.set(K.counters, counters); n++; }
+  store.set(K.plan, plans); store.set(K.planTpl, planTpl); store.set(K.planTplAt, planTplAt); snapshotActuals();
+  return { days, logN, changed: days + logN + n };
+}
+function importText(txt){
+  let o; try { o = JSON.parse(txt); } catch { o = null; }
+  if (!o || !PLAN_APPS.includes(o.app) || typeof o.plans !== 'object' || !o.plans) throw new Error("That isn't a Chronologic plan export.");
+  const { days, logN } = mergeImport(o);
+  atlasSt.mark = 0; atlasSoon();   // send everything: imported items can be older than this device's last sync
   const other = o.ws && cache && o.ws !== cache.ws ? ' They came from a different workspace, so some items may show as unknown.' : '';
   toast(`Imported ${days} plan day${days === 1 ? '' : 's'}${logN ? ` and ${logN} log change${logN === 1 ? '' : 's'}` : ''}.${other}`, !!other);
   renderPlan();
 }
 function syncCardEl(){
   const btn = (text, onclick, cls = '') => el('button', { class:`btn ${cls}`, type:'button', text, onclick });
+  if (ATLAS) return el('div', { class:'card' }, el('h4', { text:'Sync with Atlas' }),
+    el('p', { class:'hint', style:'margin:0 0 6px', text:'Plans, templates, counters and logs sync on their own with Atlas on your Mac mini whenever this device can reach it.' }),
+    el('p', { class:'hint atlas-status', style:'margin:0 0 10px', text: atlasText() }),
+    el('div', { class:'btns' }, btn('Sync now', () => atlasSync(), 'primary'), btn('Paste plans', pasteDialog), btn('Open file', openPlanFile), btn('Copy plans', copyPlans)),
+    el('p', { class:'hint', style:'margin:10px 0 0', text:'To bring data over from the GitHub Pages copy: Copy plans there, then Paste plans here.' }));
   return el('div', { class:'card' }, el('h4', { text:'Plans on your other devices' }),
     el('p', { class:'hint', style:'margin:0 0 10px', text:"Plans are saved only in this browser. Show a QR code and scan it with your phone's camera, or copy, share or save them. When both devices have the same day, the one changed most recently wins." }),
     el('div', { class:'btns' },
@@ -2084,7 +2149,7 @@ async function planLink(){
     const recent = x => x && metaDays && (x.at || 0) >= Date.now() - metaDays * DAY ? x : undefined;
     const sub = {}; for (const d of days) sub[d] = { at: plans[d].at, b: strip(plans[d].b) };
     const tpl = {}; for (const [w, bl] of Object.entries(planTpl)) tpl[w] = strip(bl);
-    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, counters: recent(counters), meta: metaDays ? metaExport(metaDays) : undefined, logs: logsExport(metaDays) });
+    const json = JSON.stringify({ app:PLAN_APP, v:1, ws: cache?.ws || null, at: Date.now(), plans: sub, templates: tpl, templatesAt: planTplAt, counters: recent(counters), meta: metaDays ? metaExport(metaDays) : undefined, logs: logsExport(metaDays) });
     return `${location.origin}${location.pathname}#plans=${b64url(await deflate(json))}`;
   };
   for (const md of [30, 14, 7]) { const url = await build(all, md); if (url.length <= LINK_MAX) return { url, days: all.length, left: 0, fits: true }; }   // app-time totals shrink first
@@ -2315,7 +2380,7 @@ function seedCounters(){
     for (const q of p ? [p, ...cache.projects] : cache.projects) { const t = q.tasks.find(x => lc(x.name) === lc(tn)); if (t) return { p:q.id, t:t.id }; }
     return null;
   };
-  counters = { at: Date.now(), list: COUNTER_SEEDS.map(({ find, ...c }) => ({ id: newId(), ...c, base: c.base || null, pin: !!c.pin, targets: find.map(findRef).filter(Boolean) })) };
+  counters = { at: 1, list: COUNTER_SEEDS.map(({ find, ...c }) => ({ id: newId(), ...c, base: c.base || null, pin: !!c.pin, targets: find.map(findRef).filter(Boolean) })) };
   store.set(K.counters, counters);
 }
 function cleanCounters(o){
@@ -2330,7 +2395,7 @@ function cleanCounters(o){
     pin: !!c.pin }));
   return { at: Number(o.at) || 0, list };
 }
-function saveCounters(){ counters.at = Date.now(); store.set(K.counters, counters); }
+function saveCounters(){ counters.at = Date.now(); store.set(K.counters, counters); atlasSoon(); }
 
 // ----- local entry copy -----
 const saveCounts = () => store.set(K.counts, counts);
@@ -2917,7 +2982,7 @@ let logs = store.get(K.logs, null) || seedLogs();
 let logFocus = null, logYear = new Date().getFullYear(), logQuery = '';
 const liveLists = () => logs.lists.filter(l => !l.del);
 const itemsOf = id => logs.items.filter(i => i.list === id && !i.del);
-function saveLogs(){ store.set(K.logs, logs); try { navigator.storage?.persist?.(); } catch {} }
+function saveLogs(){ store.set(K.logs, logs); try { navigator.storage?.persist?.(); } catch {} atlasSoon(); }
 const thisYear = () => new Date().getFullYear();
 function logYearCount(l, y){
   const its = itemsOf(l.id).filter(i => i.date.slice(0, 4) === String(y));
@@ -3103,8 +3168,95 @@ function importLogs(o){
   return n;
 }
 
+// ---------- Atlas sync: plans, templates, counters, app time and logs; 0 Clockify requests ----------
+// One request pushes what changed here since the last sync and pulls what changed elsewhere (newest change wins per record).
+function atlasCollect(mark){
+  const out = [], add = (kind, id, at, data) => { if (at > 0 && at >= mark) out.push({ kind, id: String(id), v:1, updated_at: new Date(at).toISOString(), data }); };
+  for (const [d, day] of Object.entries(plans)) add('chrono.plan', d, day.at || 0, { at: day.at, b: day.b });
+  for (const [w, b] of Object.entries(planTpl)) add('chrono.tpl', w, planTplAt[w] || 0, { at: planTplAt[w], b });
+  if (counters) add('chrono.counters', 'all', counters.at || 0, counters);
+  add('chrono.meta', meta.dev, meta.at || 0, metaExport(90)[meta.dev]);
+  for (const { id, ...l } of logs.lists) add('ledger.list', id, l.at || 0, l);
+  for (const { id, ...i } of logs.items) add('ledger.item', id, i.at || 0, i);
+  return out;
+}
+function atlasApply(recs){
+  const o = { plans:{}, templates:{}, templatesAt:{}, counters:null, meta:{}, logs:{ lists:[], items:[] } };
+  for (const r of recs) {
+    const d = r.data; if (r.deleted || !d || typeof d !== 'object') continue;
+    if (r.kind === 'chrono.plan') o.plans[r.id] = d;
+    else if (r.kind === 'chrono.tpl') { o.templates[r.id] = d.b; o.templatesAt[r.id] = d.at; }
+    else if (r.kind === 'chrono.counters') o.counters = d;
+    else if (r.kind === 'chrono.meta') o.meta[r.id] = d;
+    else if (r.kind === 'ledger.list') o.logs.lists.push({ ...d, id: r.id });
+    else if (r.kind === 'ledger.item') o.logs.items.push({ ...d, id: r.id });
+  }
+  return mergeImport(o).changed;
+}
+async function atlasSync(keepalive){
+  if (!ATLAS) return;
+  clearTimeout(atlasTimer); atlasTimer = 0;
+  if (atlasBusy) { atlasAgain = true; return; }
+  atlasBusy = true; atlasShow(); saveMeta(true);
+  const mark = Date.now(), push = atlasCollect(atlasSt.mark);
+  let cursor = atlasSt.cursor;
+  const pulled = [], rejected = [];
+  try {
+    for (let more = true, first = true; more; first = false) {
+      const r = await fetch('/api/atlas/sync', { method:'POST', cache:'no-store', referrerPolicy:'no-referrer', keepalive: !!keepalive && first,
+        headers:{ 'Content-Type':'application/json', 'X-Atlas':'1' },
+        body: JSON.stringify({ profile_id:'me', device: meta.dev, cursor, push: first ? push : [] }) });
+      if (!r.ok) throw new Error(`Atlas answered ${r.status}`);
+      const o = await r.json();
+      pulled.push(...(o.pull || [])); rejected.push(...(o.rejected || []));
+      cursor = o.cursor; more = !!o.more;
+    }
+    atlasQuiet = true;
+    let changed = 0; try { changed = atlasApply(pulled); } finally { atlasQuiet = false; }
+    atlasSt = { cursor, mark, at: Date.now(), err: rejected.length ? `${plural(rejected.length, 'change')} not saved on Atlas (${rejected[0].reason})` : '' };
+    if (changed) atlasRefresh();
+  } catch {
+    atlasSt.err = navigator.onLine === false ? 'Offline' : 'Atlas not reachable';
+  } finally {
+    store.set(K.atlas, atlasSt); atlasBusy = false; atlasShow();
+    if (atlasAgain) { atlasAgain = false; atlasSoon(); }
+  }
+}
+function atlasRefresh(){
+  if (document.querySelector('dialog[open]') || plan.drag) return;   // don't redraw under an open editor; the next sync or redraw catches up
+  renderAll();
+  if (view === 'logs') renderLogs();
+  else if (view === 'summary' && sum.kind === 'counts') renderCounts();
+}
+function atlasText(){
+  if (atlasBusy) return 'Syncing with Atlas…';
+  const min = Math.round((Date.now() - atlasSt.at) / 60000);
+  const when = !atlasSt.at ? 'Not synced with Atlas yet' : `Synced with Atlas ${min < 1 ? 'just now' : min < 60 ? `${min} min ago` : min < 1440 ? `${Math.round(min / 60)} h ago` : `on ${fmtD(new Date(atlasSt.at))}`}`;
+  if (!atlasSt.err) return `${when}.`;
+  return /reachable|Offline/.test(atlasSt.err) ? `${atlasSt.err}. ${when}. Changes are kept here and sync when Atlas is back.` : `${when}. ${atlasSt.err}.`;
+}
+function atlasShow(){
+  if (!ATLAS) return;
+  const t = atlasText();
+  $('atlasLine').textContent = t;
+  document.querySelectorAll('.atlas-status').forEach(x => { x.textContent = t; });
+}
+if (ATLAS) {
+  // Installable and opens offline; manifest and worker live on Atlas, not in the public repo.
+  document.head.append(el('link', { rel:'manifest', href:'/chronologic/manifest.webmanifest' }));
+  try { navigator.serviceWorker?.register('/chronologic/sw.js', { scope:'/chronologic/' }).catch(() => {}); } catch {}
+  if (!workoutUrl) workoutUrl = `${location.origin}/workouts/`;   // same server, so no address to type
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { if (atlasTimer) atlasSync(true); }   // don't strand an edit made just before leaving
+    else if (Date.now() - atlasSt.at > 15000) atlasSync();
+  });
+  addEventListener('online', () => atlasSync());
+  setInterval(() => { if (document.visibilityState === 'visible') atlasSync(); }, 120000);
+}
+
 // ---------- boot ----------
 indexCache(); renderAll();
+if (ATLAS) atlasSync();
 importFromHash();
 if (!apiKey) showSettings(true);
 else if (!cache) connect();
