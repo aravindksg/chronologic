@@ -218,7 +218,18 @@ button.bar:hover{background:color-mix(in srgb, var(--go) 7%, transparent)}
 .orbit-head{display:flex;align-items:center;gap:10px;margin:14px 4px 0}
 .orbit-head h2{margin:0;flex:1;min-width:0}
 .ob-tiles{margin-top:10px}
+.ob-link{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);text-decoration:none;font-size:14px;font-weight:600}
+.ob-link:hover{border-color:color-mix(in srgb, var(--go) 45%, var(--line))}
+.ob-link svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+a.ob-stat{text-decoration:none}
+.ob-bar{height:6px;border-radius:3px;background:color-mix(in srgb, var(--ink) 10%, transparent);overflow:hidden;margin:4px 0 2px}
+.ob-bar i{display:block;height:100%;background:var(--go);border-radius:3px}
+.ob-bar.over i{background:var(--run)}
+.ob-spark{display:block;width:100%;height:22px;margin:2px 0 0;overflow:visible}
+.ob-spark path{fill:none;stroke:var(--go);stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.ob-spark circle{fill:var(--go)}
 .ob-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+@media (min-width:600px){.ob-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .ob-stat{display:flex;flex-direction:column;gap:2px;min-width:0;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:12px 14px;cursor:pointer;color:inherit;font:inherit}
 .ob-stat:hover{border-color:color-mix(in srgb, var(--go) 45%, var(--line))}
 .ob-label{font-size:13px;color:var(--muted);font-weight:600}
@@ -520,7 +531,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
   plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
-  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas', kinDays:'qt.kinDays', kinGym:'qt.kinGym' };
+  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas', kinDays:'qt.kinDays', kinGym:'qt.kinGym', nourish:'qt.nourish' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -548,6 +559,7 @@ let calls = store.get(K.calls, []), backoffUntil = store.get(K.backoff, 0);
 let lastSync = 0, lastSyncTry = 0, syncing = false;
 let busy = false, query = '', activeIdx = 0, resultItems = [];
 let projectsById = new Map();
+let nourDay = store.get(K.nourish, null);   // { at, d } Nourish totals for Today, via Atlas (Atlas copy only)
 let kinDays = store.get(K.kinDays, null);   // { at, days:{ date:{ sets, min } } } from Kinesis on Atlas, for counters
 let workoutUrl = store.get(K.workoutUrl, '');  // Pocket Coach workout page; per device, never in the public repo
 
@@ -1538,7 +1550,7 @@ function setView(v){
   // Only one of Timer / Today holds the shared cards (plan now, tiles, counters), so their ids stay unique.
   if (v === 'today') $('list').replaceChildren(); else $('orbit').replaceChildren();
   if (v === 'train') { trainOpen(); updateNav(); return; }
-  if (v === 'today') { renderOrbit(); kinFetch(); window.scrollTo({ top:0 }); updateNav(); return; }
+  if (v === 'today') { renderOrbit(); kinFetch(); nourFetch(); window.scrollTo({ top:0 }); updateNav(); return; }
   if (sumV) { loadSummary(); window.scrollTo({ top:0 }); }
   else if (planV) { if (was !== 'plan') plan.date = ymd(new Date()); plan.jump = true; renderPlan(); window.scrollTo({ top:0 }); }
   else if (logsV) { if (was !== 'logs') logFocus = null; renderLogs(); window.scrollTo({ top:0 }); }
@@ -2385,7 +2397,7 @@ function openPlanFile(){
   inp.click();
 }
 // Local re-draw only: moves the "now" line, updates block states and the Timer view's plan card.
-setInterval(() => { updatePlanNow(); if (view === 'today' && !document.querySelector('dialog[open]')) renderOrbit(); if (view === 'plan' && !plan.drag && !document.querySelector('dialog[open]')) renderPlan(); }, 30000);
+setInterval(() => { updatePlanNow(); if (view === 'today' && !document.querySelector('dialog[open]')) { renderOrbit(); if (document.visibilityState === 'visible') nourFetch(); } if (view === 'plan' && !plan.drag && !document.querySelector('dialog[open]')) renderPlan(); }, 30000);
 
 // ---------- counters: how many times you did something (gym visits, reading sessions...) ----------
 // Settings sync with plans. Counting uses a local copy of 12 months of entries: about 3 requests once per device,
@@ -3277,7 +3289,7 @@ async function atlasSync(keepalive){
     let changed = 0; try { changed = atlasApply(pulled); } finally { atlasQuiet = false; }
     atlasSt = { cursor, mark, at: Date.now(), err: rejected.length ? `${plural(rejected.length, 'change')} not saved on Atlas (${rejected[0].reason})` : '' };
     if (changed) atlasRefresh();
-    kinGymOnce(); kinFetch();
+    kinGymOnce(); kinFetch(); nourFetch();
   } catch {
     atlasSt.err = navigator.onLine === false ? 'Offline' : 'Atlas not reachable';
   } finally {
@@ -3471,18 +3483,89 @@ function adherenceCard(){
   card.append(grid, el('p', { class:'ob-note', text: `${n ? `${n} planned day${n === 1 ? '' : 's'} in a row at ${ADH_GOOD * 100}%+. ` : ''}Tap a day to open its plan. ? = planned, but its tracked time isn't on this device.` }));
   return card;
 }
+// ---------- Nourish on Today (Atlas copy only) ----------
+// Atlas reads Nourish's daily totals with the coach's link key; this page never talks to Nourish itself
+// (CSP 'self'). 0 Clockify requests. Nourish lives on this same host on its own port.
+const NOURISH_PORT = 10000;
+const nourishUrl = () => ATLAS && location.protocol === 'https:' ? `https://${location.hostname}:${NOURISH_PORT}/` : null;
+const coachUrl = () => ATLAS ? `${location.origin}/` : null;
+let nourBusy = false;
+async function nourFetch(force){
+  if (!ATLAS || nourBusy || view !== 'today') return;
+  if (!force && nourDay && Date.now() - nourDay.at < 45000) return;   // with the 30 s redraw: about once a minute
+  nourBusy = true;
+  try {
+    const r = await fetch('/api/nourish/today', { headers:{ 'X-Atlas':'1' }, cache:'no-store', referrerPolicy:'no-referrer' });
+    if (!r.ok) return;
+    const o = await r.json(), n = v => typeof v === 'number' && isFinite(v) ? v : null;
+    const d = !o.connected ? { off:true } : o.error ? { err:String(o.error).slice(0, 80) } : {
+      date: /^\d{4}-\d{2}-\d{2}$/.test(o.date) ? o.date : null, units: o.units === 'kg' ? 'kg' : 'lb',
+      k: Math.max(0, n(o.today?.k) || 0), meals: Math.max(0, n(o.today?.meals) || 0), target: n(o.target), tsrc: o.target_src === 'coach' ? 'coach' : 'nourish',
+      streak: n(o.streak), change: n(o.change), since: /^\d{4}-\d{2}-\d{2}$/.test(o.since) ? o.since : null,
+      w: (Array.isArray(o.weights) ? o.weights : []).filter(x => Array.isArray(x) && /^\d{4}-\d{2}-\d{2}$/.test(x[0]) && n(x[1]) > 0).slice(-60) };
+    if (d.err && nourDay?.d && !nourDay.d.off && !nourDay.d.err) d.stale = nourDay.d;   // keep showing the last good numbers
+    const same = nourDay && JSON.stringify(nourDay.d) === JSON.stringify(d);
+    nourDay = { at: Date.now(), d }; store.set(K.nourish, nourDay);
+    if (!same && view === 'today') renderOrbit();
+  } catch {} finally { nourBusy = false; }
+}
+function obLink(cls, url, kids, label){
+  return url ? el('a', { class:cls, href:url, target:'_blank', rel:'noopener noreferrer', 'aria-label':label }, kids)
+    : el('div', { class:cls, 'aria-label':label }, kids);
+}
+function orbitEaten(){
+  const url = nourishUrl(), x = nourDay?.d, d = x?.stale || x, t = ymd(new Date());
+  const kid = (num, sub, extra) => [el('span', { class:'ob-label', text:'Eaten today' }), el('span', { class:'ob-num', text:num }), extra, el('span', { class:'ob-sub', text:sub })];
+  if (!x) return obLink('ob-stat', url, kid('–', 'Loading…'), 'Eaten today: loading. Opens Nourish');
+  if (x.off) return obLink('ob-stat', url, kid('–', 'Connect Nourish in the coach'), 'Nourish is not connected to the coach. Opens Nourish');
+  if (!d || d.err) return obLink('ob-stat', url, kid('–', d?.err || 'Not available'), 'Eaten today: not available. Opens Nourish');
+  const k = d.date === t ? d.k : 0, meals = d.date === t ? d.meals : 0;
+  const bar = d.target ? el('span', { class:`ob-bar${k > d.target ? ' over' : ''}` }, el('i', { style:`width:${Math.min(100, Math.round(k / d.target * 100))}%` })) : null;
+  const left = d.target ? (k > d.target ? `${(k - d.target).toLocaleString()} over` : `${(d.target - k).toLocaleString()} left`) : '';
+  const parts = [d.target ? `of ${d.target.toLocaleString()}` : 'kcal', meals ? `${meals} meal${meals === 1 ? '' : 's'}` : 'nothing yet', d.streak ? `🔥 ${d.streak}` : ''].filter(Boolean);
+  const label = `Eaten today: ${k} kcal${d.target ? ` of ${d.target}, ${left}` : ''}, ${meals} meals${d.streak ? `, ${d.streak}-day food streak` : ''}${x.stale ? ' (last known)' : ''}. Opens Nourish`;
+  return obLink('ob-stat', url, kid(k.toLocaleString(), parts.join(' · ') + (x.stale ? ' · old' : ''), bar), label);
+}
+function sparkEl(pts){
+  if (pts.length < 2) return null;
+  const ns = 'http://www.w3.org/2000/svg', W = 100, H = 20;
+  const xs = pts.map(p => parseYmd(p[0]).getTime()), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const X = v => x1 === x0 ? W : (v - x0) / (x1 - x0) * W, Y = v => y1 === y0 ? H / 2 : H - (v - y0) / (y1 - y0) * H;
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('class', 'ob-spark'); svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', pts.map((p, i) => `${i ? 'L' : 'M'}${X(xs[i]).toFixed(1)} ${Y(ys[i]).toFixed(1)}`).join(' '));
+  svg.append(path);
+  return svg;
+}
+function orbitWeight(){
+  const url = coachUrl(), x = nourDay?.d, d = x?.stale || x;
+  const kid = (num, sub, extra) => [el('span', { class:'ob-label', text:'Weight' }), el('span', { class:'ob-num', text:num }), extra, el('span', { class:'ob-sub', text:sub })];
+  if (!d || d.off || d.err) return obLink('ob-stat', url, kid('–', x?.off ? 'Log weight in Nourish' : 'Not available'), 'Weight: not available. Opens the coach');
+  if (!d.w.length) return obLink('ob-stat', url, kid('–', 'Log weight in Nourish'), 'Weight: none logged in the last 5 weeks. Opens the coach');
+  const [ld, lv] = d.w[d.w.length - 1], u = d.units, t = ymd(new Date());
+  const when = ld === t ? 'today' : fmtD(parseYmd(ld), { month:'short', day:'numeric' });
+  const sub = d.change != null ? `${d.change > 0 ? '▲' : d.change < 0 ? '▼' : '±'} ${Math.abs(d.change).toFixed(1)} since ${fmtD(parseYmd(d.since), { month:'short', day:'numeric' })}` : `Logged ${when}`;
+  const label = `Weight: ${lv.toFixed(1)} ${u}, logged ${when}${d.change != null ? `, ${d.change > 0 ? 'up' : 'down'} ${Math.abs(d.change).toFixed(1)} since ${d.since}` : ''}. Opens the coach`;
+  return obLink('ob-stat', url, kid(`${lv.toFixed(1)} ${u}`, sub, sparkEl(d.w)), label);
+}
 function renderOrbit(){
   const box = $('orbit'); if (view !== 'today') return;
   const gear = el('button', { class:'icon-btn', type:'button', 'aria-label':'Settings', title:'Settings',
     onclick: () => { setView('timer'); showSettings(true); window.scrollTo({ top:0 }); } });
   gear.append($('settingsBtn').querySelector('svg').cloneNode(true));
-  const out = [el('div', { class:'orbit-head' }, el('h2', { text: fmtD(new Date(), { weekday:'long', month:'long', day:'numeric' }) }), gear)];
+  const nu = nourishUrl(), leaf = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  leaf.setAttribute('viewBox', '0 0 24 24'); leaf.setAttribute('aria-hidden', 'true');
+  { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', 'M5 19c0-8 5-13 14-14-1 9-6 14-14 14zM5 19l7-7'); leaf.append(p); }
+  const nlink = nu ? el('a', { class:'ob-link', href:nu, target:'_blank', rel:'noopener noreferrer', 'aria-label':'Open Nourish (food log) in a new tab' }, leaf, 'Nourish') : null;
+  const out = [el('div', { class:'orbit-head' }, el('h2', { text: fmtD(new Date(), { weekday:'long', month:'long', day:'numeric' }) }), nlink, gear)];
   if (!cache) { box.replaceChildren(...out, el('div', { class:'empty', text:'Add your Clockify API key in Settings to load your projects.' })); return; }
   rowTimes = todayTimes();
   const pn = planNowEl(); if (pn) out.push(pn);
   const quick = quickItems().slice(0, 3);
   if (quick.length) out.push(el('div', { class:'tiles ob-tiles' }, quick.map(tileEl)));
-  out.push(el('div', { class:'ob-grid' }, orbitTracked(), orbitPlan(), ATLAS ? orbitWorkout() : null, orbitLogs()));
+  out.push(el('div', { class:'ob-grid' }, orbitTracked(), orbitPlan(), ATLAS ? orbitEaten() : null, ATLAS ? orbitWeight() : null, ATLAS ? orbitWorkout() : null, orbitLogs()));
   const holder = el('div'); countersSection(holder); out.push(...holder.childNodes);
   out.push(adherenceCard());
   box.replaceChildren(...out);
