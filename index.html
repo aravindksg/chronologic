@@ -531,7 +531,7 @@ dialog.sheet::backdrop{background:rgb(10 14 20 / .45)}
 const BASE = 'https://api.clockify.me/api/v1';
 const K = { key:'qt.key', cache:'qt.cache', recent:'qt.recent', fav:'qt.fav', tab:'qt.tab', ws:'qt.ws', projOpen:'qt.projOpen', sumKind:'qt.sumKind', calls:'qt.calls', backoff:'qt.backoff',
   plan:'qt.plan', planTpl:'qt.planTpl', actual:'qt.actual', counters:'qt.counters', counts:'qt.counts', countRange:'qt.countRange', countView:'qt.countView',
-  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas', kinDays:'qt.kinDays', kinGym:'qt.kinGym', nourish:'qt.nourish' };
+  meta:'qt.meta', metaOther:'qt.metaOther', logs:'qt.logs', workoutUrl:'qt.workoutUrl', planTplAt:'qt.planTplAt', atlas:'qt.atlas', kinDays:'qt.kinDays', kinGym:'qt.kinGym', nourish:'qt.nourish', nourDays:'qt.nourDays', foodSeed:'qt.foodSeed' };
 const DAY = 86400000;
 
 // ---------- storage (always guarded) ----------
@@ -560,6 +560,7 @@ let lastSync = 0, lastSyncTry = 0, syncing = false;
 let busy = false, query = '', activeIdx = 0, resultItems = [];
 let projectsById = new Map();
 let nourDay = store.get(K.nourish, null);   // { at, d } Nourish totals for Today, via Atlas (Atlas copy only)
+let nourDays = store.get(K.nourDays, null);  // { at, target, days:{ date:{ k, meals, logged } } } Nourish food days via Atlas, for food counters
 let kinDays = store.get(K.kinDays, null);   // { at, days:{ date:{ sets, min } } } from Kinesis on Atlas, for counters
 let workoutUrl = store.get(K.workoutUrl, '');  // Pocket Coach workout page; per device, never in the public repo
 
@@ -1123,7 +1124,7 @@ $('forgetBtn').addEventListener('click', () => {
   if (!confirm(ATLAS ? 'Remove the API key and everything Chronologic saved in this browser? Plans, counters and logs stay on Atlas and come back when you reconnect.' : 'Remove the API key, cached projects, your plans, counters and LOGS (books, movies…) from this browser? Logs exist only on your devices. Use Save file in the Plan tab first to keep them.')) return;
   Object.values(K).forEach(k => store.del(k));
   try { Object.keys(localStorage).filter(k => k.startsWith('qt.')).forEach(k => store.del(k)); } catch {}
-  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; planTplAt = {}; atlasSt = { cursor:0, mark:0, at:0, err:'' }; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; workoutUrl = ''; kinDays = null; indexCache();
+  apiKey = ''; cache = null; running = null; calls = []; backoffUntil = 0; recent = []; fav = []; tab = null; editFav = false; projOpen = {}; plans = {}; planTpl = {}; planTplAt = {}; atlasSt = { cursor:0, mark:0, at:0, err:'' }; actuals = {}; counters = null; counts = null; meta.days = {}; metaOther = {}; logs = seedLogs(); logFocus = null; workoutUrl = ''; kinDays = null; nourDays = null; indexCache();
   renderAll(); showSettings(true); toast('Key removed from this browser');
 });
 $('search').addEventListener('input', e => { query = e.target.value.trim(); activeIdx = 0; renderList(); });
@@ -2436,6 +2437,7 @@ function seedCounters(){
   counters = { at: 1, list: COUNTER_SEEDS.map(({ find, ...c }) => ({ id: newId(), ...c, base: c.base || null, pin: !!c.pin, targets: find.map(findRef).filter(Boolean) })) };
   store.set(K.counters, counters);
 }
+const FOOD_KINDS = { logged:'Food logged (Nourish)', under:'At or under calorie target (Nourish)' };
 function cleanCounters(o){
   if (!o || typeof o !== 'object' || !Array.isArray(o.list)) return null;
   const str = (v, n) => typeof v === 'string' && v ? v.slice(0, n) : null, int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
@@ -2445,7 +2447,7 @@ function cleanCounters(o){
     mode: c.mode === 'sessions' ? 'sessions' : 'days', min: int(c.min, 0, 1440),
     goal: c.goal && Number(c.goal.n) > 0 ? { kind: c.goal.kind === 'max' ? 'max' : 'min', n: int(c.goal.n, 1, 999), per: c.goal.per === 'month' ? 'month' : 'week' } : null,
     base: c.base && /^\d{4}-\d{2}-\d{2}$/.test(c.base.through) ? { n: int(c.base.n, 0, 99999), through: c.base.through } : null,
-    pin: !!c.pin, kin: !!c.kin }));
+    pin: !!c.pin, kin: !!c.kin, food: FOOD_KINDS[c.food] ? c.food : null }));
   return { at: Number(o.at) || 0, list };
 }
 function saveCounters(){ counters.at = Date.now(); store.set(K.counters, counters); atlasSoon(); }
@@ -2503,6 +2505,7 @@ async function ensureCounts(force){
 // ----- counting -----
 // Matching entries for a counter (the running timer included), sorted by start.
 function counterMatches(c){
+  if (c.food) return foodMatches(c);
   const tn = t => counts.names[t] || [...projectsById.values()].flatMap(p => p.tasks).find(x => x.id === t)?.name || '';
   const hit = (p, t, name) => c.targets.some(tg => matchKind(tg, { p, t, tn: name }) === 'exact');
   const xs = counts.list.filter(x => hit(x[2], x[3], tn(x[3]))).map(x => ({ s: x[0] * 60000, e: x[1] * 60000 }));
@@ -2519,6 +2522,20 @@ function counterMatches(c){
       xs.push({ s, e: s + Math.max(k.min * 60000, need - ms, 60000), kin: true });
     }
   }
+  return xs.sort((x, y) => x.s - y.s);
+}
+// Food counters (Atlas copy): a day from Nourish counts as a one-minute block at noon.
+//   logged = the day meets Nourish's streak rule (2+ meals, 1,200+ kcal; today once it does).
+//   under  = a logged day at or under the daily target (coach's, else Nourish's); today waits until the day is over.
+function foodOk(c, d, x){
+  if (!x?.logged) return false;
+  if (c.food === 'under') return d < ymd(new Date()) && !!nourDays.target && x.k <= nourDays.target;
+  return true;
+}
+function foodMatches(c){
+  const xs = [];
+  if (!nourDays?.days) return xs;
+  for (const [d, x] of Object.entries(nourDays.days)) if (foodOk(c, d, x)) { const s = +parseYmd(d) + 12 * 3600000; xs.push({ s, e: s + 60000, food: true }); }
   return xs.sort((x, y) => x.s - y.s);
 }
 function counterEvents(c, xs = counterMatches(c)){
@@ -2581,6 +2598,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function ruleText(c){
   const m = c.min ? dur(c.min * 60000) : '';
   const parts = [c.mode === 'days' ? (m ? `Days with ${m}+` : 'Days') : (m ? `Sessions of ${m}+` : 'Sessions')];
+  if (c.food) parts[0] = c.food === 'under' ? `Logged days at or under ${nourDays?.target ? nourDays.target.toLocaleString() + ' kcal' : 'the calorie target'}` : 'Days logged in Nourish (2+ meals, 1,200+ kcal)';
   if (c.kin && c.mode === 'days') parts[0] += ' or a logged workout';
   if (c.goal) parts.push(c.goal.kind === 'max' ? `At most ${c.goal.n} a ${c.goal.per}` : `Goal ${c.goal.n}+ a ${c.goal.per}`);
   return parts.join(' · ');
@@ -2629,6 +2647,7 @@ function renderCounts(){
   const box = $('summary');
   seedCounters();
   if (!counters) { box.replaceChildren(el('div', { class:'empty', text:'Load your projects first.' })); return; }
+  foodSeedOnce(); foodFetch();
   const out = [];
   const seg = el('div', { class:'seg crange', role:'radiogroup', 'aria-label':'Count range' }, CRANGES.map(([k, short, long]) =>
     el('button', { type:'button', role:'radio', 'aria-checked': String(k === countRange), 'aria-label': long, text: short,
@@ -2711,7 +2730,7 @@ function renderCounterPage(c, i){
   const head = el('div', { class:'cpage-head' },
     el('button', { class:'icon-btn nav', type:'button', 'aria-label':'All counters', text:'‹', onclick: back }),
     el('div', { class:'label' }, el('div', { class:'cpage-name' }, dot, el('span', { text:c.name })),
-      el('div', { class:'sum-sub', style:'text-align:left', text:`${c.targets.map(t => targetOf(t).name).join(', ') || 'No tasks chosen'} · ${ruleText(c)}` })),
+      el('div', { class:'sum-sub', style:'text-align:left', text: c.food ? ruleText(c) : `${c.targets.map(t => targetOf(t).name).join(', ') || 'No tasks chosen'} · ${ruleText(c)}` })),
     el('button', { class:'btn', type:'button', text:'Edit', onclick: () => counterDialog(c) }));
   const scores = el('div', { class:'scores' },
     scoreEl('This year', String(y.n), y.base ? `incl. ${y.base.n} before ${fmtD(addDays(parseYmd(y.base.through), 1))}` : y.partial ? 'partial' : ''),
@@ -2720,7 +2739,7 @@ function renderCounterPage(c, i){
   const grid = el('div', { class:'card' }, el('h4', { text:'Every day' }));
   box.replaceChildren(head, scores, grid);
   heatmapInto(grid, c, col, ev, dms);
-  const notes = [`Darker means more time that day. Data starts ${fmtD(parseYmd(coveredFrom()), { month:'short', day:'numeric', year:'numeric' })}; earlier days are blank.`];
+  const notes = [`Darker means ${c.food ? 'more calories' : 'more time'} that day. Data starts ${fmtD(parseYmd(coveredFrom()), { month:'short', day:'numeric', year:'numeric' })}; earlier days are blank.`];
   if (y.base) notes.push(`The ${y.base.n} counted before ${fmtD(addDays(parseYmd(y.base.through), 1))} are in the year total but have no dates, so those days look empty.`);
   box.append(el('p', { class:'hint', style:'margin-top:12px', text: notes.join(' ') }));
 }
@@ -2765,6 +2784,9 @@ function dayGridInto(card, o){
   scroller.scrollLeft = scroller.scrollWidth;   // open on the current week
 }
 function heatmapInto(card, c, col, ev, dms){
+  if (c.food) {   // shade by calories that day; describe meals and kcal
+    dms = new Map(Object.entries(nourDays?.days || {}).map(([d, x]) => [d, x.k]));
+  }
   const counted = new Map(); for (const d of ev) counted.set(d, (counted.get(d) || 0) + 1);
   // shade levels from the spread of your own counted days (quartiles), like GitHub
   const vals = [...counted.keys()].map(d => dms.get(d) || 0).filter(v => v > 0).sort((a, b) => a - b);
@@ -2776,12 +2798,15 @@ function heatmapInto(card, c, col, ev, dms){
     shade: lv => `color-mix(in srgb, ${col} ${SH[lv]}%, var(--surface))`,
     cell: d => { const ms = dms.get(d) || 0, cnt = counted.get(d); return cnt ? { lv: ms <= t1 ? 1 : ms <= t2 ? 2 : ms <= t3 ? 3 : 4 } : ms ? { lv:1, under:true } : { lv:0 }; },
     describe: (day, d) => { const ms = dms.get(d) || 0, cnt = counted.get(d) || 0;
+      if (c.food) { const x = nourDays?.days?.[d]; if (!x) return 'nothing logged';
+        const what = `${x.k.toLocaleString()} kcal · ${plural(x.meals, 'meal')}`;
+        return cnt ? `${what} · counted` : `${what} · not counted (${!x.logged ? 'under 2 meals or 1,200 kcal' : d === ymd(new Date()) ? 'today is not over' : 'over the target'})`; }
       return !ms ? 'nothing' : cnt ? (c.mode === 'sessions' ? `${dur(ms)} · ${plural(cnt, 'session')}` : `${dur(ms)} · counted`) : `${dur(ms)} · not counted (under ${dur(c.min * 60000)})`; },
     goal: goalW ? w => {
       const v = ev.filter(d => d >= w && d < ymd(addDays(parseYmd(w), 7))).length, ok = c.goal.kind === 'max' ? v <= c.goal.n : v >= c.goal.n, current = w === weekOf(today);
       return { cls: ok ? 'met' : current ? 'open' : '', title: `Week of ${fmtD(parseYmd(w))}: ${v}${ok ? ', goal met' : current ? ', in progress' : ', goal missed'}` };
     } : null,
-    legend: [c.min ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' under the minimum') : null,
+    legend: [c.food ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' food logged, not counted') : c.min ? el('span', { class:'hm-note' }, el('i', { class:'hm-key under' }), ' under the minimum') : null,
       goalW ? el('span', { class:'hm-note' }, el('i', { class:'hm-key goal' }), ` week met goal (${c.goal.kind === 'max' ? 'at most' : 'at least'} ${c.goal.n})`) : null] });
 }
 
@@ -2797,7 +2822,7 @@ function overviewInto(card, data){
   card.append(sw);
   if (countView === 'rows') return byCounterInto(card, data);
   // Good days: how many counters you hit each day. "At most" counters (like Gaming) don't count as a hit.
-  const good = data.filter(x => x.c.targets.length && x.c.goal?.kind !== 'max');
+  const good = data.filter(x => (x.c.targets.length || x.c.food) && x.c.goal?.kind !== 'max');
   const SH = [0, 30, 55, 78, 100];
   card.append(el('p', { class:'sum-sub ov-sub', text:`Darker = more of your ${good.length} counters hit that day (counters with an "at most" goal are left out).` }));
   dayGridInto(card, {
@@ -2808,7 +2833,7 @@ function overviewInto(card, data){
 }
 // By counter: one colored row per counter, one square per day for the last 13 weeks. Streaks read as unbroken runs.
 function byCounterInto(card, data){
-  const rows = data.filter(x => x.c.targets.length), today = startOfDay(new Date()), N = 91, cov = coveredFrom();
+  const rows = data.filter(x => x.c.targets.length || x.c.food), today = startOfDay(new Date()), N = 91, cov = coveredFrom();
   const dates = []; for (let k = N - 1; k >= 0; k--) dates.push(addDays(today, -k));
   const nameW = 104, endW = 46, avail = (card.clientWidth || 340) - 34 - nameW - endW, fit = Math.floor(avail / N);
   const step = fit >= 7 ? Math.min(14, fit) : 12, rowH = 18, T = 16, W = N * step, H = T + rows.length * rowH;
@@ -2884,8 +2909,13 @@ function counterDialog(c){
   const pin = el('input', { type:'checkbox' }); pin.checked = !!ed.pin;
   const kin = el('input', { type:'checkbox' }); kin.checked = !!ed.kin;
   const kinRow = ATLAS ? el('label', { class:'check' }, kin, 'Also count days with a logged workout (Kinesis)') : null;
-  const syncKin = () => kinRow?.classList.toggle('hidden', mode.value !== 'days');
+  const syncKin = () => kinRow?.classList.toggle('hidden', mode.value !== 'days' || !!src?.value);
   mode.addEventListener('change', syncKin);
+  // Atlas copy: a counter can count food days from Nourish instead of Clockify time.
+  const src = ATLAS || ed.food ? sel('cSrc', [['', 'Time in Clockify'], ...Object.entries(FOOD_KINDS)], ed.food || '') : null;
+  const timeRows = [];
+  const syncSrc = () => { for (const r of timeRows) r.classList.toggle('hidden', !!src?.value); syncKin(); };
+  src?.addEventListener('change', syncSrc);
   const save = () => {
     ed.name = name.value.trim();
     if (!ed.name) { toast('Give the counter a name', true); name.focus(); return; }
@@ -2893,18 +2923,22 @@ function counterDialog(c){
     ed.goal = gk.value ? { kind: gk.value, n: Math.max(1, Math.round(+gn.value || 1)), per: gp.value } : null;
     ed.base = bn.value !== '' && bd.value ? { n: Math.max(0, Math.round(+bn.value)), through: bd.value } : null;
     ed.pin = pin.checked;
-    if (ATLAS) ed.kin = kin.checked && ed.mode === 'days';
+    ed.food = src?.value || null;
+    if (ed.food) { ed.mode = 'days'; ed.min = 0; ed.targets = []; }
+    if (ATLAS) ed.kin = kin.checked && ed.mode === 'days' && !ed.food;
     if (ed.kin) kinFetch(true);
+    if (ed.food) foodFetch(true);
     const i = counters.list.findIndex(x => x.id === ed.id);
     if (i >= 0) counters.list[i] = ed; else counters.list.push(ed);
     saveCounters(); dlg.close(); renderCounts(); renderList();
   };
   const dlg = openDialog(c ? `Edit ${c.name}` : 'New counter',
     el('div', { class:'field', style:'margin-top:0' }, el('label', { for:'cName', text:'Name' }), name),
-    el('div', { class:'field' }, el('span', { text:'Counts time on' }), chosen, q, pick),
-    el('div', { class:'times-row' },
+    src ? el('div', { class:'field' }, el('label', { for:'cSrc', text:'Counts' }), src) : null,
+    timeRows[timeRows.push(el('div', { class:'field' }, el('span', { text:'Counts time on' }), chosen, q, pick)) - 1],
+    timeRows[timeRows.push(el('div', { class:'times-row' },
       el('div', { class:'field' }, el('label', { for:'cMode', text:'Count' }), mode),
-      el('div', { class:'field' }, el('label', { for:'cMin', text:'Min. minutes' }), min)),
+      el('div', { class:'field' }, el('label', { for:'cMin', text:'Min. minutes' }), min))) - 1],
     goalRow,
     el('div', { class:'times-row' },
       el('div', { class:'field' }, el('label', { for:'cBaseN', text:'Count so far this year' }), bn),
@@ -2918,7 +2952,7 @@ function counterDialog(c){
       c ? el('button', { class:'btn danger', type:'button', text:'Delete', onclick: () => {
         if (!confirm(`Delete the ${c.name} counter? Your Clockify entries are not affected.`)) return;
         counters.list = counters.list.filter(x => x.id !== c.id); saveCounters(); dlg.close(); renderCounts(); renderList(); } }) : null));
-  drawChosen(); drawPick(); syncGoal(); syncKin(); if (!c) name.focus();
+  drawChosen(); drawPick(); syncGoal(); syncSrc(); if (!c) name.focus();
 }
 
 // ---------- tracking itself: time spent in this app (local only, 0 requests) ----------
@@ -3289,7 +3323,7 @@ async function atlasSync(keepalive){
     let changed = 0; try { changed = atlasApply(pulled); } finally { atlasQuiet = false; }
     atlasSt = { cursor, mark, at: Date.now(), err: rejected.length ? `${plural(rejected.length, 'change')} not saved on Atlas (${rejected[0].reason})` : '' };
     if (changed) atlasRefresh();
-    kinGymOnce(); kinFetch(); nourFetch();
+    kinGymOnce(); foodSeedOnce(); kinFetch(); nourFetch(); foodFetch();
   } catch {
     atlasSt.err = navigator.onLine === false ? 'Offline' : 'Atlas not reachable';
   } finally {
@@ -3369,6 +3403,37 @@ async function kinFetch(force){
     kinDays = { at: Date.now(), days }; store.set(K.kinDays, kinDays);
     if (!same) atlasRefresh();
   } catch {} finally { kinBusy = false; }
+}
+// Food days from Nourish (through Atlas), for food counters. One local Atlas request, at most once a minute.
+let foodBusy = false;
+async function foodFetch(force){
+  if (!ATLAS || foodBusy) return;
+  const need = counters?.list.some(c => c.food) || !store.get(K.foodSeed, false);
+  if (!need || (!force && nourDays && Date.now() - nourDays.at < 60000)) return;
+  foodBusy = true;
+  try {
+    const r = await fetch('/api/nourish/days', { headers:{ 'X-Atlas':'1' }, cache:'no-store', referrerPolicy:'no-referrer' });
+    if (!r.ok) return;
+    const o = await r.json();
+    if (!o.connected || o.error) return;          // keep the last good copy
+    const days = {}, n = v => typeof v === 'number' && isFinite(v) ? v : 0;
+    for (const [d, x] of Object.entries(o.days || {})) if (/^\d{4}-\d{2}-\d{2}$/.test(d) && x)
+      days[d] = { k: Math.max(0, Math.round(n(x.k))), meals: Math.max(0, Math.min(20, Math.round(n(x.meals)))), logged: !!x.logged };
+    const target = n(o.target) > 0 ? Math.round(o.target) : null;
+    const same = nourDays && nourDays.target === target && JSON.stringify(nourDays.days) === JSON.stringify(days);
+    nourDays = { at: Date.now(), target, days }; store.set(K.nourDays, nourDays);
+    foodSeedOnce();
+    if (!same) atlasRefresh();
+  } catch {} finally { foodBusy = false; }
+}
+// One time, once Nourish answers: add two food counters (unless a device already has food counters).
+function foodSeedOnce(){
+  if (!ATLAS || !nourDays || !counters || store.get(K.foodSeed, false)) return;   // needs Nourish connected and counters set up
+  store.set(K.foodSeed, true);
+  if (counters.list.some(c => c.food)) return;
+  const mk = (name, food, n, pin) => ({ id: newId(), name, targets: [], mode:'days', min:0, goal:{ kind:'min', n, per:'week' }, base:null, pin, kin:false, food });
+  counters.list.push(mk('Food logged', 'logged', 6, true), mk('On calorie target', 'under', 5, false));
+  saveCounters();
 }
 // One time: the Gym counter counts logged workouts too (the user's choice). Runs after a pull, so it
 // edits the latest counters rather than racing another device's change.
